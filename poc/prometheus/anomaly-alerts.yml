@@ -1,0 +1,125 @@
+# Alerts that complement grafana/promql-anomaly-detection's own `AnomalyDetected` alert.
+#
+#   Tier 0  SLO burn rate      -> the only thing that pages (severity: page)
+#   Tier 1  log novelty        -> ticket/chat (severity: warning|info)
+#   Tier 2  ML anomaly score   -> ticket/chat, from ../ml/prom_anomaly_job.py
+#   Meta    detector health    -> a silent detector is worse than a noisy one
+groups:
+  # ---------------------------------------------------------------------------
+  # Tier 0: multi-window, multi-burn-rate SLO alert (Google SRE Workbook, ch. 5).
+  # Example SLO: 99.9 % of server spans succeed per service (error budget 0.001).
+  # In practice generate these with Sloth or Pyrra instead of hand-writing them.
+  # ---------------------------------------------------------------------------
+  - name: slo-burn-rate-recording
+    interval: 1m
+    rules:
+      - record: slo:svc:error_ratio:rate5m
+        expr: |
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]), "service", "$1", "service_name", "(.*)"))
+          /
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m]), "service", "$1", "service_name", "(.*)"))
+      - record: slo:svc:error_ratio:rate30m
+        expr: |
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[30m]), "service", "$1", "service_name", "(.*)"))
+          /
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[30m]), "service", "$1", "service_name", "(.*)"))
+      - record: slo:svc:error_ratio:rate1h
+        expr: |
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[1h]), "service", "$1", "service_name", "(.*)"))
+          /
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[1h]), "service", "$1", "service_name", "(.*)"))
+      - record: slo:svc:error_ratio:rate6h
+        expr: |
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[6h]), "service", "$1", "service_name", "(.*)"))
+          /
+          sum by (service) (label_replace(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[6h]), "service", "$1", "service_name", "(.*)"))
+
+  - name: slo-burn-rate-alerts
+    rules:
+      - alert: ErrorBudgetBurnFast
+        # 2 % of a 30-day budget in 1 h (burn rate 14.4), confirmed by the 5 m window so it resets quickly.
+        expr: |
+          slo:svc:error_ratio:rate1h > (14.4 * 0.001)
+          and
+          slo:svc:error_ratio:rate5m > (14.4 * 0.001)
+        labels:
+          severity: page
+          tier: "0"
+        annotations:
+          summary: "{{ $labels.service }} burning error budget 14x (1h window)"
+      - alert: ErrorBudgetBurnSlow
+        # 5 % of the budget in 6 h (burn rate 6).
+        expr: |
+          slo:svc:error_ratio:rate6h > (6 * 0.001)
+          and
+          slo:svc:error_ratio:rate30m > (6 * 0.001)
+        labels:
+          severity: page
+          tier: "0"
+        annotations:
+          summary: "{{ $labels.service }} burning error budget 6x (6h window)"
+
+  # ---------------------------------------------------------------------------
+  # Tier 1: log novelty from the Drain3 exporter.
+  # ---------------------------------------------------------------------------
+  - name: log-novelty
+    rules:
+      - alert: LogNewTemplatesBurst
+        # Several never-seen log shapes in 15 min = new code path, new error, new dependency failure.
+        # Suppressed for the first hour after an exporter restart (everything is "new" during warm-up),
+        # per exporter instance, so restarting one shard does not mute the others.
+        # drain3_exporter.py only: the OTel drain+count path has no log_templates_created_total.
+        expr: |
+          sum by (service) (
+            increase(log_templates_created_total[15m])
+            and on (job, instance)
+            (time() - process_start_time_seconds{job="drain3-exporter"} > 3600)
+          ) > 5
+        labels:
+          severity: warning
+          tier: "1"
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanize }} new log templates in 15m"
+          description: "Look up template text via log_template_info{service=\"{{ $labels.service }}\"}."
+
+  # ---------------------------------------------------------------------------
+  # Tier 2: scores exported by ../ml/prom_anomaly_job.py (robust z, |score| > 4 = anomalous).
+  # ---------------------------------------------------------------------------
+  - name: ml-anomaly-score
+    rules:
+      - alert: SeasonalAnomalyScoreHigh
+        expr: abs(anomaly_score) > 4
+        for: 15m
+        labels:
+          severity: warning
+          tier: "2"
+        annotations:
+          summary: "{{ $labels.anomaly_query }} deviates from its seasonal baseline (score {{ $value | printf \"%.1f\" }})"
+
+  # ---------------------------------------------------------------------------
+  # Meta: detector health.
+  # ---------------------------------------------------------------------------
+  - name: anomaly-detector-health
+    rules:
+      - alert: AnomalyJobStale
+        # Second branch: the scorer is down or not scraped, so the timestamp series itself is gone.
+        # It also fires for good if the scorer is not deployed at all: drop this rule then.
+        expr: time() - anomaly_job_last_success_timestamp_seconds > 600 or absent_over_time(anomaly_job_last_success_timestamp_seconds[10m])
+        labels:
+          severity: warning
+          tier: meta
+        annotations:
+          summary: "Tier-2 anomaly job has not completed a run for 10+ minutes"
+      - alert: LogTemplateCapReached
+        # >10 % of lines land in template_id="other": masking is too weak or --max-exported too low.
+        # From ../otel/logs-drain-count.yaml, "other" = lines not annotated yet (drain warm-up not finished).
+        expr: |
+          sum(rate(log_template_lines_total{template_id="other"}[15m]))
+          /
+          sum(rate(log_template_lines_total[15m])) > 0.10
+        for: 30m
+        labels:
+          severity: info
+          tier: meta
+        annotations:
+          summary: "Drain3 exporter template cap reached ({{ $value | humanizePercentage }} of lines unlabelled)"

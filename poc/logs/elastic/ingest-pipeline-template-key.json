@@ -1,0 +1,27 @@
+{
+  "description": "Stateless log template key on the free Basic license: mask variable tokens in a copy of `message`, hash it. Same template -> same log.template_id on every host, after every restart. Attach via index.default_pipeline (or run the equivalent Filebeat processors, see filebeat-template-key.yml). Seed/extend the masks from an offline Drain3 run on a log sample. Container stdout (Filebeat `container` parser + add_kubernetes_metadata): service.name falls back to the container name, and plain-text lines get log.level from a leading level word.",
+  "processors": [
+    { "set": { "field": "service.name", "copy_from": "kubernetes.container.name",
+               "if": "ctx.service?.name == null && ctx.kubernetes?.container?.name != null" } },
+    { "grok": { "field": "message", "if": "ctx.log?.level == null", "ignore_missing": true, "ignore_failure": true,
+                "patterns": ["^(?:%{TIMESTAMP_ISO8601}\\s+)?\\[?%{LOGLEVEL:log.level}\\]?[\\s:]"] } },
+    { "set": { "field": "log.template", "copy_from": "message", "ignore_empty_value": true } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}([.,]\\d+)?(Z|[+-]\\d{2}:?\\d{2})?", "replacement": "<TS>" } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "replacement": "<UUID>" } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "\\b\\d{1,3}(\\.\\d{1,3}){3}\\b", "replacement": "<IP>" } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "\\b(0x[0-9a-fA-F]+|[0-9a-fA-F]{12,})\\b", "replacement": "<HEX>" } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "\\b[-+]?\\d+(\\.\\d+)?(ns|us|ms|s|KB|MB|GB|B|%)?\\b", "replacement": "<NUM>" } },
+    { "gsub": { "field": "log.template", "ignore_missing": true,
+                "pattern": "\"[^\"]{0,200}\"", "replacement": "<STR>" } },
+    { "fingerprint": { "fields": ["log.template"], "target_field": "log.template_id",
+                       "method": "MurmurHash3", "ignore_missing": true } }
+  ],
+  "on_failure": [
+    { "set": { "field": "log.template_error", "value": "{{ _ingest.on_failure_message }}" } }
+  ]
+}

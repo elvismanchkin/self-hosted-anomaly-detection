@@ -1,0 +1,12 @@
+# e2e Alertmanager: accepts and groups alerts, sends nothing anywhere.
+route:
+  receiver: "null"
+  group_by: [alertname, service]
+  group_wait: 5s
+receivers:
+  - name: "null"
+inhibit_rules:
+  # A service that stops logging drops every template: keep the volume alert, mute the template ones.
+  - source_matchers: [alertname="AnomalydLogVolume", direction="down"]
+    target_matchers: [alertname="AnomalydLogTemplateRate", direction="down"]
+    equal: [service]

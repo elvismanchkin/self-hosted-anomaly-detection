@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Free-Tier Anomaly Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --ground: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f8fafb;
+  --ink: #101820;
+  --ink-2: #45515e;
+  --muted: #66727f;
+  --rule: #dce2e8;
+  --rule-strong: #c3cbd4;
+  --accent: #1d5fb8;
+  --accent-ink: #ffffff;
+  --accent-wash: rgba(42, 120, 214, 0.10);
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --band: rgba(42, 120, 214, 0.13);
+  --obs: #45515e;
+  --good: #0ca30c;
+  --warn: #fab219;
+  --crit: #d03b3b;
+  --later: #6d7f93;
+  --code-bg: #eaeff4;
+  --shadow: 0 1px 2px rgba(16, 24, 32, 0.06), 0 8px 24px rgba(16, 24, 32, 0.06);
+  --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e1419;
+    --surface: #141b21;
+    --surface-2: #18212a;
+    --ink: #e8edf2;
+    --ink-2: #b3bfcb;
+    --muted: #8d9aa8;
+    --rule: #25303a;
+    --rule-strong: #34414d;
+    --accent: #6aa8f0;
+    --accent-ink: #0e1419;
+    --accent-wash: rgba(57, 135, 229, 0.16);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --band: rgba(57, 135, 229, 0.20);
+    --obs: #b3bfcb;
+    --later: #8fa1b5;
+    --code-bg: #1c2630;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e1419;
+  --surface: #141b21;
+  --surface-2: #18212a;
+  --ink: #e8edf2;
+  --ink-2: #b3bfcb;
+  --muted: #8d9aa8;
+  --rule: #25303a;
+  --rule-strong: #34414d;
+  --accent: #6aa8f0;
+  --accent-ink: #0e1419;
+  --accent-wash: rgba(57, 135, 229, 0.16);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --band: rgba(57, 135, 229, 0.20);
+  --obs: #b3bfcb;
+  --later: #8fa1b5;
+  --code-bg: #1c2630;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+  padding-inline: 20px;
+}
+.wrap { max-width: 1120px; margin-inline: auto; }
+a { color: var(--accent); text-underline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 4px; white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 {
+  font: 700 clamp(1.45rem, 1.1rem + 1.2vw, 1.9rem)/1.15 var(--display);
+  font-stretch: 87.5%;
+  letter-spacing: -0.01em;
+}
+h3 { font: 600 1.02rem/1.3 var(--sans); }
+p { margin: 0; }
+.eyebrow {
+  font: 500 0.74rem/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.section-head { display: grid; gap: 8px; max-width: 70ch; }
+.section-head p { color: var(--ink-2); }
+
+/* ---------- hero ---------- */
+header.hero { padding-block: 44px 28px; display: grid; gap: 22px; }
+.hero h1 {
+  font: 800 clamp(2rem, 1.3rem + 3vw, 3.3rem)/1.02 var(--display);
+  font-stretch: 87.5%;
+  letter-spacing: -0.005em;
+  word-spacing: 0.08em;
+  max-width: 18ch;
+}
+.lede { font-size: 1.12rem; color: var(--ink-2); max-width: 64ch; }
+.stack-line { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--ink-2); font-size: 0.92rem; }
+.stack-line span { display: inline-flex; align-items: center; gap: 6px; }
+.stack-line span::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: var(--rule-strong); }
+
+figure.chart {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 18px 18px 12px;
+  display: grid;
+  gap: 10px;
+  position: relative;
+}
+.chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: flex-end; }
+.chart-title { font: 600 1rem/1.3 var(--sans); }
+.chart-sub { color: var(--muted); font-size: 0.85rem; max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+.key-band { width: 16px; height: 10px; border-radius: 2px; display: inline-block; background: var(--band); }
+.key-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--crit); box-shadow: 0 0 0 2px var(--surface); }
+.key-rect { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+#hero-box { position: relative; min-height: 220px; }
+#hero-box svg { display: block; width: 100%; height: auto; overflow: visible; }
+.axis text { fill: var(--muted); font: 400 11px var(--sans); font-variant-numeric: tabular-nums; }
+.grid line { stroke: var(--rule); stroke-width: 1; }
+.annot { fill: var(--ink-2); font: 500 11.5px var(--sans); }
+.annot-line { stroke: var(--rule-strong); stroke-width: 1; }
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  min-width: 170px;
+  z-index: 5;
+}
+.tooltip[hidden] { display: none; }
+.tt-head { color: var(--muted); font: 500 0.72rem var(--mono); margin-bottom: 4px; }
+.tt-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.tt-row b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+.tt-row span { color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.tt-flag { margin-top: 4px; color: var(--ink); font-weight: 600; display: flex; gap: 6px; align-items: center; }
+
+.keyfigs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 0; }
+.keyfig { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.keyfig dt { font: 700 1.55rem/1.1 var(--display); font-stretch: 87.5%; }
+.keyfig dd { margin: 0; color: var(--ink-2); font-size: 0.9rem; }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 64px; padding-block: 36px 24px; }
+section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; scroll-margin-top: 16px; }
+
+/* ---------- findings ---------- */
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.finding { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; }
+.finding p { color: var(--ink-2); font-size: 0.95rem; }
+.tag { justify-self: start; font: 500 0.7rem/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 4px 8px; }
+
+/* ---------- tiers ---------- */
+.tiers { list-style: none; margin: 0; padding: 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.tier { display: grid; grid-template-columns: 64px minmax(0, 1fr) 150px; gap: 16px; padding: 16px 18px; align-items: start; }
+.tier + .tier { border-top: 1px solid var(--rule); }
+.tier-id { font: 800 1.6rem/1 var(--display); font-stretch: 80%; color: var(--muted); }
+.tier-body { display: grid; gap: 6px; }
+.tier-body p { color: var(--ink-2); font-size: 0.93rem; }
+.tier-body .files { color: var(--muted); font-size: 0.82rem; }
+.route { justify-self: end; font-size: 0.8rem; font-weight: 600; border-radius: 999px; padding: 5px 11px; white-space: nowrap; border: 1px solid var(--rule-strong); color: var(--ink-2); background: var(--surface-2); }
+.route.pages { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* ---------- flow ---------- */
+.flow-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.flow-card pre.mermaid { margin: 0; min-width: 760px; background: transparent; }
+.notes { margin: 0; padding-left: 1.1em; color: var(--ink-2); display: grid; gap: 6px; max-width: 80ch; font-size: 0.95rem; }
+
+/* ---------- matrix ---------- */
+.filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.chipset { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chipset-label { font: 500 0.72rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 2px; }
+.chip {
+  font: 500 0.84rem/1 var(--sans);
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 7px 11px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
+.search { font: 400 0.9rem var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 7px 10px; min-width: 0; width: 220px; max-width: 100%; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--ink-2); cursor: pointer; }
+.count { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+.matrix-table { min-width: 1080px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 0.74rem/1.2 var(--sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: var(--surface-2); position: sticky; top: 0; }
+tbody tr:last-child td { border-bottom: 0; }
+td.opt { font-weight: 600; color: var(--ink); min-width: 220px; }
+td.opt small { display: block; font-weight: 400; color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+td { color: var(--ink-2); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.pill i { width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center; font: 700 11px/1 var(--sans); font-style: normal; color: #fff; }
+.pill[data-v="Adopt"] i { background: var(--good); }
+.pill[data-v="Pilot"] i { background: var(--warn); color: #3b2a00; }
+.pill[data-v="Later"] i { background: var(--later); }
+.pill[data-v="No"] i { background: var(--crit); }
+.pill[data-v="Situational"] i { background: var(--rule-strong); color: var(--ink); }
+.verdict-note { display: block; font-weight: 400; color: var(--ink-2); font-size: 0.8rem; margin-top: 4px; white-space: normal; max-width: 30ch; }
+.empty { padding: 20px; color: var(--muted); }
+
+/* ---------- cost ---------- */
+.build-figs { margin-top: 16px; }
+.cost-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow); padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; position: relative; }
+.bars { display: grid; gap: 8px; }
+.bar-row, .bar-axis { display: grid; grid-template-columns: minmax(200px, 320px) minmax(0, 1fr); gap: 14px; align-items: center; }
+.bar-label { font-size: 0.86rem; color: var(--ink); line-height: 1.25; }
+.bar-label small { display: block; color: var(--muted); font-size: 0.76rem; }
+.track { position: relative; height: 26px; }
+.track .gl { position: absolute; top: -4px; bottom: -4px; width: 1px; background: var(--rule); }
+.bar { position: absolute; left: 0; top: 5px; height: 16px; border-radius: 0 4px 4px 0; min-width: 3px; }
+.bar-val { position: absolute; top: 3px; font: 600 0.8rem/20px var(--sans); color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 6px; }
+.bar-row:hover .bar, .bar-row:focus-visible .bar { filter: brightness(1.12); }
+.bar-row { border-radius: 6px; outline-offset: 3px; }
+.axis-ticks { position: relative; height: 16px; }
+.axis-ticks span { position: absolute; transform: translateX(-50%); font: 400 11px var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.axis-ticks span:first-child { transform: none; }
+.axis-ticks span:last-child { transform: translateX(-100%); }
+details.table-view summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
+details.table-view .table-scroll { margin-top: 10px; }
+details.table-view td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+details.table-view td.formula { font-size: 0.82rem; color: var(--ink-2); min-width: 16rem; }
+.caption { color: var(--muted); font-size: 0.82rem; max-width: 90ch; }
+
+/* ---------- roadmap ---------- */
+.roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: grid; gap: 10px; align-content: start; }
+.stage .when { font: 500 0.74rem var(--mono); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.stage ul { margin: 0; padding-left: 1.05em; display: grid; gap: 6px; color: var(--ink-2); font-size: 0.92rem; }
+.stage.now { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+
+/* ---------- verification ---------- */
+.verify-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.verify-table { min-width: 560px; }
+.ok { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); font-weight: 600; }
+.ok::before { content: "✓"; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--good); color: #fff; font-size: 10px; }
+.gotchas { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: grid; gap: 10px; }
+.gotchas ol { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; color: var(--ink-2); font-size: 0.9rem; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 24px 40px; color: var(--muted); font-size: 0.85rem; display: grid; gap: 8px; }
+footer .files { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+
+@media (max-width: 760px) {
+  body { padding-inline: 16px; }
+  code { white-space: normal; }
+  .tier { grid-template-columns: 44px minmax(0, 1fr); }
+  .route { grid-column: 2; justify-self: start; }
+  .bar-row, .bar-axis { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .bar-axis > div:first-child { display: none; }
+  .verify-grid { grid-template-columns: minmax(0, 1fr); }
+  .search { width: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chip, .bar { transition: filter 120ms ease, border-color 120ms ease, background-color 120ms ease; }
+}
+</style>
+
+<header class="wrap hero">
+  <p class="eyebrow">Research · 14 Sep 2026 · add-ons only, no licence changes</p>
+  <h1>Anomaly detection on the stack you already run</h1>
+  <p class="lede">For 200&nbsp;GB–2&nbsp;TB of logs a day and 1–10&nbsp;M active series: shrink every signal to a few thousand aggregates, run cheap statistics on all of them, page only on SLO burn, and let an LLM see alert bundles — never raw data.</p>
+  <div class="stack-line" aria-label="Current stack">
+    <span>App stdout → Filebeat → Elasticsearch + Kibana (free Basic)</span>
+    <span>Prometheus + Grafana OSS + Alertmanager</span>
+    <span>Jaeger</span>
+  </div>
+
+  <figure class="chart" id="hero-fig">
+    <div class="chart-head">
+      <div>
+        <div class="chart-title">Requests/s against a seasonal baseline, last 36 hours</div>
+        <p class="chart-sub">Synthetic series scored by the Tier-2 scorer in <code>poc/ml</code>: the expected value is the median of the same time on the previous 3 days, and the band is ±4 × a robust (MAD) scale. Two injected incidents are flagged; normal day/night swings stay inside the band.</p>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="key-line" style="background: var(--obs)"></i>observed</span>
+        <span><i class="key-line" style="background: var(--s1)"></i>expected</span>
+        <span><i class="key-band"></i>band ±4×scale</span>
+        <span><i class="key-dot"></i>flagged |z| &gt; 4</span>
+      </div>
+    </div>
+    <div id="hero-box"></div>
+    <div class="tooltip" id="hero-tt" hidden></div>
+    <details class="table-view">
+      <summary>Show flagged points as a table</summary>
+      <div class="table-scroll"><table id="hero-table"><thead><tr><th>Time</th><th>Observed</th><th>Expected</th><th>Robust z</th></tr></thead><tbody></tbody></table></div>
+    </details>
+  </figure>
+
+  <dl class="keyfigs">
+    <div class="keyfig"><dt>$0</dt><dd>in licences for every recommended component. The cost is compute and engineering time.</dd></div>
+    <div class="keyfig"><dt>3–5k</dt><dd>service-level series carry all metric anomaly detection, not the 1–10&nbsp;M raw series.</dd></div>
+    <div class="keyfig"><dt>~95%</dt><dd>fewer spans written to Elasticsearch: tail sampling runs after span metrics, so the RED metrics still cover 100% of traffic.</dd></div>
+    <div class="keyfig"><dt>$1–$780</dt><dd>per month for LLM summaries of alert bundles, against ≈&nbsp;$375k per month to run raw logs through an LLM.</dd></div>
+  </dl>
+</header>
+
+<main class="wrap">
+  <section id="findings" aria-labelledby="findings-h">
+    <div class="section-head">
+      <p class="eyebrow">Findings</p>
+      <h2 id="findings-h">What the research found</h2>
+    </div>
+    <div class="findings">
+      <article class="finding"><span class="tag">Logs</span><h3>Elastic's own log anomaly detection is not free</h3><p>ML jobs, log categorization, the AIOps tools, and ES|QL <code>CATEGORIZE</code> / <code>CHANGE_POINT</code> all need Platinum+. Kibana Basic can alert only to Index and Server log (the Cases connector is Platinum), so it can't send a webhook. The free route is ElastAlert2 on top of a stateless template key, rolled up per minute by a transform, which is free on Basic.</p></article>
+      <article class="finding"><span class="tag">Metrics</span><h3>The best free detector is plain PromQL</h3><p><code>grafana/promql-anomaly-detection</code> provides adaptive (mean ± 2σ) and robust (median ± 2·MAD) seasonal bands as recording rules, with no plugin and no feature flag. Run it on tagged service-level series only. Grafana OSS has no ML: Grafana ML and Sift are Cloud-only.</p></article>
+      <article class="finding"><span class="tag">Traces</span><h3>Traces are best handled as metrics</h3><p>An OTel Collector tier in front of Jaeger turns 100% of spans into RED metrics, then keeps errors, slow traces and 2% of the rest. The metrics feed the same bands and SLO rules as everything else. Jaeger v1 has been end-of-life since 2025-12-31.</p></article>
+      <article class="finding"><span class="tag">Methods</span><h3>Simple beats clever at this scale</h3><p>On TSB-AD, simple statistical methods (Sub-PCA 0.42, POLY 0.39 VUS-PR) beat forecasting foundation models (TimesFM 0.30, Chronos 0.27). Template novelty and count methods are competitive with deep learning on the public log datasets. None of the operators cited pages on raw anomalies; Uber and Netflix page on anomaly output only after a confirmation stage or health model.</p></article>
+      <article class="finding"><span class="tag">LLM</span><h3>An LLM only fits at the tail</h3><p>One call per Alertmanager group, with a ≤ 20k-token bundle of pre-summarised evidence and a hard monthly cap. HolmesGPT can run on demand for deeper investigations. Anything upstream of the detectors is 3–6 orders of magnitude too expensive.</p></article>
+      <article class="finding"><span class="tag">Cost</span><h3>Managed alternatives cost thousands a month</h3><p>At list prices, this volume costs ≈ $8.1k–$85k/month on Grafana Cloud Pro (60 s scrape), ≈ $62k–$609k/month on Datadog, and ≈ $2.3k–$17k/month on Elastic Serverless Complete, whose "as low as" rate applies only above 150,000 GB/month. Self-managed Elastic Platinum is quote-only and sold to existing customers only.</p></article>
+    </div>
+  </section>
+
+  <section id="tiers" aria-labelledby="tiers-h">
+    <div class="section-head">
+      <p class="eyebrow">Design</p>
+      <h2 id="tiers-h">Four tiers, one pager</h2>
+      <p>Each tier runs on less data than the one before and costs more per item. Findings from tiers 1–3 go to chat, grouped per service, and are muted while a page for that service is firing.</p>
+    </div>
+    <ol class="tiers">
+      <li class="tier"><span class="tier-id">T0</span><div class="tier-body"><h3>Rules and SLO burn rate</h3><p>Multi-window, multi-burn-rate alerts (14.4× over 1 h/5 m, 6× over 6 h/30 m), generated with Sloth or Pyrra. Heartbeats, flatlines and <code>predict_linear</code> for capacity.</p><span class="files mono">poc/prometheus/anomaly-alerts.yml</span></div><span class="route pages">Pages on-call</span></li>
+      <li class="tier"><span class="tier-id">T1</span><div class="tier-body"><h3>Cheap statistics on every aggregate</h3><p>Adaptive and robust PromQL bands on 3–5k service-level series. ElastAlert2 new-template and template-spike rules on the 1-minute log rollup; flatline and error-ratio rules on the raw indices. Log-novelty alert on template counts.</p><span class="files mono">poc/prometheus/anomaly-inputs.yml · poc/logs/elastalert2/ · poc/logs/elastic/</span></div><span class="route">Chat / ticket</span></li>
+      <li class="tier"><span class="tier-id">T2</span><div class="tier-body"><h3>ML on the top-K series</h3><p>A seasonal-median + MAD scorer (Python, or the Go port in <a href="#build">anomalyd</a>) exports <code>anomaly_score</code>, and can be upgraded to statsforecast MSTL or Matrix Profile. It confirms tier-1 candidates rather than paging anyone.</p><span class="files mono">poc/ml/prom_anomaly_job.py</span></div><span class="route">Second opinion</span></li>
+      <li class="tier"><span class="tier-id">T3</span><div class="tier-body"><h3>LLM on alert bundles</h3><p>A bundle per Alertmanager group: related series, template deltas with redacted samples, and error trace IDs. One cheap-model call with capped output. HolmesGPT runs on demand, ≤ 20 per day.</p><span class="files mono">webhook route in poc/prometheus/alertmanager.yml</span></div><span class="route">On demand, capped</span></li>
+    </ol>
+  </section>
+
+  <section id="flow" aria-labelledby="flow-h">
+    <div class="section-head">
+      <p class="eyebrow">Architecture</p>
+      <h2 id="flow-h">Where it plugs in</h2>
+      <p>Nothing in the core path changes. The additions are Filebeat processors, one ES transform, ElastAlert2, a collector tier in front of Jaeger, recording rules, and a small scorer.</p>
+    </div>
+    <div class="flow-card">
+<pre class="mermaid">
+flowchart LR
+  subgraph LOGS[Logs]
+    SO["App stdout&lt;br/&gt;/var/log/containers"] --> FB["Filebeat&lt;br/&gt;+ template-key processors"] --> ES[("Elasticsearch&lt;br/&gt;raw logs unchanged")]
+    ES --> TR["Transform, free on Basic&lt;br/&gt;1-min rollup"]
+    TR --> EA["ElastAlert2&lt;br/&gt;new template · template spike"]
+    ES -- "flatline, error ratio" --> EA
+  end
+  subgraph TRACES[Traces]
+    APP["Apps: OTLP or Jaeger SDK"] --> OT["OTel tier 1 + 2&lt;br/&gt;span metrics, then tail sampling"]
+    OT -- "errors + slow + 2%" --> J["Jaeger collector"]
+  end
+  J --> ES
+  OT -- "RED metrics, 100% of spans" --> P[("Prometheus&lt;br/&gt;1–10 M series")]
+  P -- "service-level rules" --> R["Bands + SLO burn rules"]
+  P -- "top-K series" --> SC["Tier-2 scorer"]
+  SC -- "anomaly_score" --> P
+  R --> AM["Alertmanager&lt;br/&gt;group · inhibit · route"]
+  EA -- "API v2" --> AM
+  AM -- "severity=page" --> ON["On-call"]
+  AM -- "findings" --> CH["Chat / tickets"]
+  AM -. "bundle per service" .-> LLM["LLM triage, capped"]
+</pre>
+    </div>
+    <ul class="notes">
+      <li><b>Why the key is added in Filebeat:</b> Filebeat allows exactly one output, and re-reading 2 TB/day out of Elasticsearch would be a second workload as large as ingest. So the template key is added in Filebeat or an ingest pipeline, and the transform rolls it up.</li>
+      <li><b>Optional AD Prometheus:</b> a small second Prometheus, fed by a remote_write keep-filter, can hold the ~100k recorded series for 90 days. Weekly bands need 7 days of history and SLO windows need 30, so this avoids raising retention on the big server.</li>
+      <li><b>Pilot alternative for logs:</b> an OTel Collector <code>file_log → container → drain → count</code> DaemonSet reads the same container stdout files as Filebeat and sends template counts to Prometheus, so logs and metrics share one set of detectors.</li>
+      <li><b>Build option:</b> <a href="#build">anomalyd</a> replaces the scorer's per-run <code>query_range</code> with <code>remote_write</code> and adds a per-host Drain agent that ships counts, not lines.</li>
+    </ul>
+  </section>
+
+  <section id="matrix" aria-labelledby="matrix-h">
+    <div class="section-head">
+      <p class="eyebrow">Comparison</p>
+      <h2 id="matrix-h">Options compared</h2>
+      <p>44 options across logs, metrics, traces, and correlation/LLM, judged against self-managed free editions, this volume, and add-ons only. Versions and dates as of 2026-09-14.</p>
+    </div>
+    <div class="filters" role="group" aria-label="Filter options">
+      <div class="chipset" id="signal-chips"><span class="chipset-label">Signal</span></div>
+      <div class="chipset" id="verdict-chips"><span class="chipset-label">Verdict</span></div>
+      <label class="check" for="hide-swaps"><input type="checkbox" id="hide-swaps"> Hide swaps and licence upgrades</label>
+      <input class="search" id="matrix-search" type="search" placeholder="Search options" aria-label="Search options">
+      <span class="count" id="matrix-count" aria-live="polite"></span>
+    </div>
+    <div class="table-scroll">
+      <table class="matrix-table">
+        <thead><tr><th>Option</th><th>Verdict</th><th>Capability</th><th>Fit at this scale</th><th>Licence / cost</th><th>Add-on or swap</th><th>Maturity</th></tr></thead>
+        <tbody id="matrix-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="cost" aria-labelledby="cost-h">
+    <div class="section-head">
+      <p class="eyebrow">Cost</p>
+      <h2 id="cost-h">What it costs per month</h2>
+      <p>The OSS plan pays $0 in licences; its compute is sized in <code>docs/cost-sizing.md</code>. The bars compare the plan's variable spend (LLM triage, and the CPU of mining log templates at the edge) with managed products at list price and with the approach this plan rules out. Every bar's formula and price source is in the table below; <code>docs/cost_model.py</code> recomputes them.</p>
+    </div>
+    <div class="cost-card" id="cost-card">
+      <div class="chart-head">
+        <div class="chart-title">Monthly cost, US$ — logarithmic scale</div>
+        <div class="legend">
+          <span><i class="key-rect" style="background: var(--s1)"></i>OSS plan add-on</span>
+          <span><i class="key-rect" style="background: var(--s2)"></i>Managed product, list price</span>
+          <span><i class="key-rect" style="background: var(--s3)"></i>Ruled out</span>
+        </div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="tooltip" id="cost-tt" hidden></div>
+      <p class="caption">"200 GB/day" means 200 GB/day of logs + 1 M series; "2 TB/day" means 2 TB/day + 10 M series. List prices checked on 2026-09-15; support, egress and negotiated discounts excluded. Tiered prices are graduated. Bars show the low end of each range: Grafana's calculator also bills retention on every GB, and Elastic meters an enriched size (≈ 1.66× raw in its estimator). The raw-log LLM figure counts input tokens only, at ~4 bytes/token.</p>
+      <details class="table-view" open>
+        <summary>Formulas and sources</summary>
+        <div class="table-scroll"><table id="cost-table"><thead><tr><th>Item</th><th>Detail</th><th style="text-align:right">US$ / month</th><th>Formula</th><th>Price source</th></tr></thead><tbody></tbody></table></div>
+      </details>
+    </div>
+  </section>
+
+  <section id="roadmap" aria-labelledby="roadmap-h">
+    <div class="section-head">
+      <p class="eyebrow">Plan</p>
+      <h2 id="roadmap-h">Roadmap</h2>
+      <p>Iteration 1 only adds components. Swaps and heavier models come only after iterations 1–2 produce evidence on our own incidents.</p>
+    </div>
+    <div class="roadmap">
+      <div class="stage now"><span class="when">Step 0 · half a day</span><h3>Confirm what runs</h3><ul><li><code>GET /</code>, <code>GET _license</code>, <code>GET _xpack</code>: expect <code>basic</code>, with ml ✗ and transform ✓</li><li>Prometheus <code>buildinfo</code> and <code>status/tsdb</code> for top cardinality</li><li>Jaeger version: v1 is end-of-life</li><li>Filebeat ≥ 7.8? Apps on OTLP or Jaeger SDKs?</li></ul></div>
+      <div class="stage"><span class="when">Iteration 1 · weeks 1–4</span><h3>Add-ons only</h3><ul><li>Alertmanager as the single bus; ElastAlert2 → API v2</li><li>SLO burn-rate alerts for the top 10–20 services</li><li>OTel tiers in front of Jaeger (span metrics, tail sampling)</li><li>Template key in Filebeat, then the 1-minute transform</li><li>Tag 3–5k inputs and load the upstream band rules</li><li>Exit when no anomaly pages anyone and every rule's precision is measured</li></ul></div>
+      <div class="stage"><span class="when">Iteration 2 · months 2–3</span><h3>Confirm and explain</h3><ul><li>Tier-2 scorer on the top-K series; MSTL if needed</li><li>Pilot OTel <code>drain</code> + <code>count</code> on a few hosts</li><li>LLM triage webhook with a $100/month cap and redaction</li><li>HolmesGPT on demand; Keep OSS if grouping isn't enough</li><li>Evaluate on the incident log, never with point-adjusted F1</li></ul></div>
+      <div class="stage"><span class="when">Iteration 3 · quarter 2+</span><h3>Only with evidence</h3><ul><li>Jaeger v2 upgrade, if still on v1</li><li>Kafka tee, if several consumers need the raw stream</li><li>Thanos (additive), or Mimir/VictoriaMetrics, for &gt; 90 days of history</li><li>OpenSearch RCF, if log detection on the rollup falls short</li><li>Foundation models, if a back-test shows lift</li></ul></div>
+    </div>
+  </section>
+
+  <section id="build" aria-labelledby="build-h">
+    <div class="section-head">
+      <p class="eyebrow">Build option · iteration 2 pilot</p>
+      <h2 id="build-h">anomalyd: the same detectors in one Go binary</h2>
+      <p>A second, separate PoC in <code>anomalyd/</code>, one static binary with one third-party dependency. <b>anomalyd agent</b> reads the container stdout files Filebeat already ships (a DaemonSet next to Filebeat), mines Drain templates on the node and sends only per-template counts. <b>anomalyd server</b> takes the anomaly inputs through <code>remote_write</code>, backfills their history from Prometheus once, scores every series against the same seasonal median + MAD baseline as the Python scorer, spots new log templates, and sends <code>tier</code>-labelled findings to Alertmanager.</p>
+    </div>
+    <div class="cost-card" id="tp-card">
+      <div class="chart-head">
+        <div class="chart-title">Log lines mined per second on one core, synthetic Filebeat-style logs</div>
+      </div>
+      <div class="bars" id="tp-bars"></div>
+      <div class="tooltip" id="tp-tt" hidden></div>
+      <p class="caption">JSON parse, masking and Drain included; about 150 B per line and 23 templates, so every figure is an upper bound for real logs. "Container stdout" is the same file wrapped as containerd writes it (CRI envelope per line), which is what Filebeat reads here. Drain3 ran on the host on a 300k-line file; OTel and anomalyd ran on the same 3M-line files in Docker with <code>--cpus 1</code> (OTel time includes start-up). Commands: <code>anomalyd/test/bench/compare.sh</code>, with <code>CONTAINER=cri</code> for the stdout rows.</p>
+      <details class="table-view">
+        <summary>Show as a table</summary>
+        <div class="table-scroll"><table id="tp-table"><thead><tr><th>Miner</th><th>Detail</th><th style="text-align:right">Lines / s</th></tr></thead><tbody></tbody></table></div>
+      </details>
+    </div>
+    <dl class="keyfigs build-figs">
+      <div class="keyfig"><dt>68&nbsp;KB</dt><dd>of gzip counts sent by the agent for 160&nbsp;MB of logs in the end-to-end run. Raw lines never leave the host.</dd></div>
+      <div class="keyfig"><dt>291&nbsp;MB</dt><dd>of server heap for 5k metric series with 3 weeks of 5-min history plus 30k log-template series.</dd></div>
+      <div class="keyfig"><dt>1e-9</dt><dd>agreement with the Python scorer. On the test file the Go miner's 23 templates are identical to Drain3's.</dd></div>
+      <div class="keyfig"><dt>3 of 3</dt><dd>injected incidents reached Alertmanager in the Docker run with Prometheus 3.14.0; the 4 per-template drops of the silent service were inhibited.</dd></div>
+    </dl>
+  </section>
+
+  <section id="verified" aria-labelledby="verified-h">
+    <div class="section-head">
+      <p class="eyebrow">Evidence</p>
+      <h2 id="verified-h">Validated locally</h2>
+      <p>Every PoC piece ran on synthetic data, in Docker or local Python. Nothing touched our real systems. Not verified: real-log throughput, Filebeat regex CPU, tail-sampling memory at real span rates, ElastAlert2 on ES 7.x.</p>
+    </div>
+    <div class="verify-grid">
+      <div class="table-scroll">
+        <table class="verify-table">
+          <thead><tr><th>Component</th><th>Check</th><th>Result</th></tr></thead>
+          <tbody id="verify-body"></tbody>
+        </table>
+      </div>
+      <div class="gotchas">
+        <h3>Gotchas the checks caught</h3>
+        <ol id="gotchas"></ol>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Source files in the research repository:</p>
+  <div class="files"><span>README.md</span><span>docs/reference-architecture.md</span><span>docs/comparison-matrix.md</span><span>docs/cost-sizing.md</span><span>docs/roadmap.md</span><span>docs/research/01–05</span><span>poc/README.md</span><span>docs/verification-review.md</span><span>anomalyd/README.md</span><span>LINKS.md (988 sources)</span></div>
+  <p>Versions and licences were checked on 2026-09-14, prices again on 2026-09-15. Items the research could not confirm are marked UNVERIFIED in the research files.</p>
+</footer>
+
+<script>
+const HERO = [[-36.0,574.2,541.9,650.3,433.5,1.19],[-35.917,559.5,569.3,683.2,455.4,-0.34],[-35.833,577.9,581.8,698.2,465.4,-0.13],[-35.75,590.8,588.9,706.7,471.2,0.06],[-35.667,570.7,590.7,708.8,472.5,-0.68],[-35.583,551.7,573.6,688.3,458.9,-0.76],[-35.5,595.0,592.7,711.3,474.2,0.08],[-35.417,601.9,597.8,717.3,478.2,0.14],[-35.333,597.6,597.8,717.3,478.2,-0.01],[-35.25,617.5,590.9,709.1,472.7,0.9],[-35.167,595.0,617.1,740.5,493.7,-0.71],[-35.083,608.2,600.9,721.1,480.8,0.24],[-35.0,608.3,617.8,741.3,494.2,-0.31],[-34.917,628.1,608.6,730.3,486.9,0.64],[-34.833,650.5,617.6,741.1,494.1,1.07],[-34.75,621.2,619.0,742.9,495.2,0.07],[-34.667,666.7,646.3,775.6,517.0,0.63],[-34.583,661.1,647.1,776.6,517.7,0.43],[-34.5,651.6,637.3,764.7,509.8,0.45],[-34.417,651.7,636.6,763.9,509.2,0.48],[-34.333,676.7,641.5,769.8,513.2,1.1],[-34.25,645.2,633.4,760.1,506.7,0.37],[-34.167,650.0,666.1,799.3,532.9,-0.48],[-34.083,636.4,672.4,806.8,537.9,-1.07],[-34.0,667.4,642.6,771.1,514.1,0.77],[-33.917,686.5,661.3,793.6,529.0,0.76],[-33.833,675.1,676.8,812.2,541.5,-0.05],[-33.75,676.2,685.1,822.1,548.0,-0.26],[-33.667,668.0,680.5,816.6,544.4,-0.37],[-33.583,677.6,672.0,806.4,537.6,0.17],[-33.5,651.7,666.2,799.4,532.9,-0.44],[-33.417,698.9,667.2,800.6,533.7,0.95],[-33.333,675.2,683.1,819.7,546.5,-0.23],[-33.25,665.1,689.5,827.4,551.6,-0.71],[-33.167,673.7,695.7,834.8,556.5,-0.63],[-33.083,674.6,672.2,806.6,537.8,0.07],[-33.0,706.8,718.5,862.2,574.8,-0.32],[-32.917,712.4,714.3,857.1,571.4,-0.05],[-32.833,670.6,671.4,805.7,537.1,-0.02],[-32.75,713.2,687.5,825.0,550.0,0.75],[-32.667,714.0,702.1,842.6,561.7,0.34],[-32.583,688.8,685.7,822.8,548.6,0.09],[-32.5,673.5,703.8,844.6,563.1,-0.86],[-32.417,687.7,699.7,839.7,559.8,-0.34],[-32.333,690.4,682.3,818.8,545.8,0.24],[-32.25,708.5,719.9,863.8,575.9,-0.31],[-32.167,696.3,692.2,830.7,553.8,0.12],[-32.083,666.4,702.5,843.0,562.0,-1.03],[-32.0,707.1,702.6,843.2,562.1,0.13],[-31.917,675.0,697.0,836.4,557.6,-0.63],[-31.833,718.5,708.1,849.7,566.5,0.3],[-31.75,679.9,689.1,827.0,551.3,-0.27],[-31.667,688.3,700.1,840.2,560.1,-0.34],[-31.583,684.4,661.3,793.5,529.0,0.7],[-31.5,688.8,690.9,829.1,552.7,-0.06],[-31.417,720.5,685.0,822.0,548.0,1.04],[-31.333,710.8,695.1,834.1,556.1,0.45],[-31.25,704.5,687.1,824.5,549.7,0.51],[-31.167,697.4,689.4,827.3,551.5,0.23],[-31.083,661.5,691.5,829.8,553.2,-0.87],[-31.0,677.5,672.6,807.1,538.1,0.15],[-30.917,674.3,687.8,825.4,550.3,-0.39],[-30.833,663.8,684.0,820.8,547.2,-0.59],[-30.75,687.4,675.2,810.3,540.2,0.36],[-30.667,661.6,683.7,820.4,547.0,-0.65],[-30.583,658.7,665.8,799.0,532.7,-0.21],[-30.5,649.0,671.5,805.8,537.2,-0.67],[-30.417,626.8,662.5,794.9,530.0,-1.08],[-30.333,670.5,661.8,794.2,529.4,0.26],[-30.25,679.4,655.7,786.8,524.6,0.72],[-30.167,654.1,664.2,797.0,531.4,-0.31],[-30.083,628.6,645.0,774.0,516.0,-0.51],[-30.0,592.6,645.2,774.2,516.1,-1.63],[-29.917,639.3,645.2,774.2,516.1,-0.18],[-29.833,652.9,618.0,741.5,494.4,1.13],[-29.75,630.9,619.1,742.9,495.2,0.38],[-29.667,636.6,613.2,735.8,490.5,0.76],[-29.583,640.7,600.7,720.9,480.6,1.33],[-29.5,628.4,617.7,741.2,494.1,0.35],[-29.417,594.0,599.9,719.8,479.9,-0.2],[-29.333,614.6,596.1,715.3,476.9,0.62],[-29.25,603.2,591.1,709.3,472.9,0.41],[-29.167,554.9,592.0,710.4,473.6,-1.25],[-29.083,568.5,568.4,682.1,454.7,0.0],[-29.0,543.3,590.6,708.8,472.5,-1.6],[-28.917,560.0,556.1,667.4,444.9,0.14],[-28.833,565.2,556.2,667.5,445.0,0.32],[-28.75,528.3,549.7,659.6,439.7,-0.78],[-28.667,503.1,560.2,672.2,448.2,-2.04],[-28.583,556.0,534.5,641.4,427.6,0.8],[-28.5,531.8,511.5,613.8,409.2,0.79],[-28.417,543.8,521.7,626.1,417.4,0.84],[-28.333,485.7,520.3,624.4,416.3,-1.33],[-28.25,520.7,506.5,607.7,405.2,0.56],[-28.167,531.0,499.5,599.4,399.6,1.26],[-28.083,521.8,508.7,610.4,407.0,0.51],[-28.0,473.8,491.4,589.7,393.1,-0.72],[-27.917,474.3,486.5,583.8,389.2,-0.5],[-27.833,458.5,470.5,564.6,376.4,-0.51],[-27.75,471.1,459.1,551.0,367.3,0.52],[-27.667,463.5,454.0,544.8,363.2,0.42],[-27.583,438.1,444.0,532.7,355.2,-0.26],[-27.5,403.8,449.6,539.5,359.6,-2.03],[-27.417,433.3,401.7,483.6,319.8,1.55],[-27.333,403.3,416.2,499.4,333.0,-0.62],[-27.25,414.7,422.0,506.4,337.6,-0.35],[-27.167,399.9,391.1,472.5,309.8,0.43],[-27.083,416.1,383.3,463.8,302.8,1.63],[-27.0,399.2,386.4,467.9,304.9,0.63],[-26.917,362.4,371.0,452.5,289.5,-0.42],[-26.833,368.7,347.9,428.4,267.4,1.03],[-26.75,386.1,353.2,434.5,272.0,1.62],[-26.667,336.6,354.4,436.4,272.4,-0.87],[-26.583,346.2,328.1,410.2,246.0,0.88],[-26.5,351.9,316.6,399.9,233.3,1.7],[-26.417,345.3,336.9,420.8,253.0,0.4],[-26.333,324.3,345.0,428.7,261.3,-0.99],[-26.25,283.6,307.7,391.6,223.8,-1.15],[-26.167,277.2,304.7,388.3,221.2,-1.32],[-26.083,297.0,284.8,367.9,201.7,0.59],[-26.0,292.2,310.7,394.2,227.1,-0.88],[-25.917,323.9,279.5,362.6,196.4,2.14],[-25.833,255.5,270.4,353.7,187.1,-0.72],[-25.75,284.6,255.5,338.8,172.2,1.4],[-25.667,271.3,244.9,329.2,160.6,1.25],[-25.583,220.7,263.7,348.2,179.2,-2.04],[-25.5,229.6,245.6,330.1,161.1,-0.76],[-25.417,241.0,237.9,322.7,153.0,0.15],[-25.333,223.0,232.5,317.3,147.7,-0.45],[-25.25,223.1,231.0,316.0,145.9,-0.37],[-25.167,228.6,219.2,302.5,136.0,0.45],[-25.083,199.9,220.1,303.4,136.8,-0.97],[-25.0,217.4,197.3,280.3,114.2,0.97],[-24.917,192.3,209.0,292.3,125.8,-0.8],[-24.833,188.9,195.3,278.6,112.1,-0.31],[-24.75,203.5,180.0,263.3,96.7,1.12],[-24.667,178.8,189.1,273.3,105.0,-0.49],[-24.583,189.7,188.3,271.6,105.1,0.07],[-24.5,209.1,185.5,268.5,102.5,1.13],[-24.417,176.6,175.3,258.4,92.3,0.06],[-24.333,169.6,169.8,252.5,87.1,-0.01],[-24.25,181.8,194.2,277.0,111.5,-0.6],[-24.167,158.5,180.8,262.6,98.9,-1.09],[-24.083,181.2,154.4,236.4,72.4,1.31],[-24.0,135.6,161.0,243.9,78.0,-1.22],[-23.917,166.9,141.1,223.9,58.3,1.25],[-23.833,143.9,152.2,235.9,68.6,-0.4],[-23.75,136.3,163.8,247.5,80.2,-1.32],[-23.667,180.2,147.3,229.9,64.7,1.6],[-23.583,131.0,140.7,225.1,56.3,-0.46],[-23.5,176.1,142.3,226.0,58.7,1.62],[-23.417,154.7,126.9,211.3,42.4,1.32],[-23.333,167.6,144.9,230.5,59.4,1.06],[-23.25,122.6,129.2,215.0,43.5,-0.31],[-23.167,160.8,141.9,227.5,56.3,0.88],[-23.083,164.6,147.8,233.9,61.8,0.78],[-23.0,135.7,137.0,223.1,51.0,-0.06],[-22.917,135.0,133.2,218.2,48.2,0.09],[-22.833,181.4,120.9,205.9,35.8,2.84],[-22.75,140.3,127.2,213.0,41.5,0.61],[-22.667,129.7,128.5,213.5,43.6,0.05],[-22.583,126.3,144.2,228.7,59.7,-0.85],[-22.5,146.2,133.1,218.2,48.1,0.61],[-22.417,144.8,128.5,213.0,44.0,0.77],[-22.333,142.9,131.3,215.9,46.7,0.55],[-22.25,171.8,151.9,236.1,67.7,0.94],[-22.167,136.1,128.1,213.1,43.1,0.38],[-22.083,151.9,136.8,222.8,50.9,0.7],[-22.0,325.4,150.9,236.9,65.0,8.12],[-21.917,244.4,156.0,243.0,69.0,4.07],[-21.833,317.8,158.8,246.0,71.6,7.29],[-21.75,348.7,169.2,256.4,82.0,8.24],[-21.667,243.8,147.7,235.5,59.9,4.38],[-21.583,135.3,155.3,243.9,66.6,-0.9],[-21.5,138.8,189.9,278.6,101.2,-2.31],[-21.417,126.8,183.8,271.9,95.6,-2.59],[-21.333,170.8,153.3,240.5,66.1,0.8],[-21.25,132.1,173.4,261.1,85.6,-1.88],[-21.167,177.4,171.2,259.3,83.0,0.28],[-21.083,197.6,178.7,266.9,90.6,0.85],[-21.0,145.5,165.6,254.4,76.8,-0.91],[-20.917,172.1,184.3,274.2,94.5,-0.55],[-20.833,146.5,171.5,261.0,81.9,-1.11],[-20.75,198.5,198.4,288.4,108.3,0.01],[-20.667,174.7,210.0,299.6,120.4,-1.58],[-20.583,186.7,175.6,265.0,86.2,0.5],[-20.5,196.1,187.3,276.2,98.4,0.4],[-20.417,208.7,207.9,296.7,119.1,0.04],[-20.333,196.4,201.0,289.4,112.5,-0.21],[-20.25,206.7,194.4,281.4,107.4,0.57],[-20.167,200.5,243.5,331.2,155.7,-1.96],[-20.083,216.3,225.7,312.0,139.4,-0.43],[-20.0,197.1,231.6,317.8,145.4,-1.6],[-19.917,223.4,227.7,313.8,141.7,-0.2],[-19.833,191.5,235.4,320.8,150.0,-2.06],[-19.75,221.5,237.9,323.4,152.5,-0.77],[-19.667,268.9,224.0,309.9,138.1,2.09],[-19.583,240.0,241.1,327.9,154.4,-0.05],[-19.5,220.0,261.6,348.4,174.9,-1.92],[-19.417,251.4,237.3,323.9,150.7,0.65],[-19.333,233.4,228.6,315.4,141.8,0.22],[-19.25,225.4,230.0,316.3,143.7,-0.21],[-19.167,246.0,249.2,334.7,163.7,-0.15],[-19.083,276.7,274.9,360.4,189.5,0.08],[-19.0,274.5,274.2,359.2,189.1,0.01],[-18.917,269.9,276.5,360.9,192.1,-0.31],[-18.833,259.1,278.4,362.8,194.0,-0.92],[-18.75,260.5,277.2,362.3,192.2,-0.79],[-18.667,308.3,276.1,361.5,190.6,1.51],[-18.583,292.5,293.8,379.8,207.7,-0.06],[-18.5,275.0,308.3,393.8,222.8,-1.56],[-18.417,258.2,298.0,384.3,211.7,-1.85],[-18.333,275.5,299.9,386.9,212.8,-1.12],[-18.25,348.7,303.9,391.5,216.4,2.04],[-18.167,287.4,297.4,384.9,209.8,-0.46],[-18.083,310.6,323.6,410.6,236.7,-0.6],[-18.0,319.6,336.6,423.5,249.7,-0.78],[-17.917,316.8,302.5,389.1,215.9,0.66],[-17.833,318.5,336.9,423.5,250.3,-0.85],[-17.75,302.5,324.9,411.7,238.1,-1.03],[-17.667,312.1,346.9,433.7,260.1,-1.61],[-17.583,365.1,338.3,426.5,250.0,1.21],[-17.5,324.7,311.4,399.8,222.9,0.6],[-17.417,357.2,338.1,425.8,250.5,0.87],[-17.333,315.1,350.4,438.8,261.9,-1.6],[-17.25,344.2,339.6,428.1,251.1,0.21],[-17.167,357.3,340.4,428.0,252.7,0.77],[-17.083,374.7,343.6,432.4,254.9,1.4],[-17.0,339.3,337.5,426.8,248.3,0.08],[-16.917,373.6,369.0,457.7,280.2,0.21],[-16.833,373.2,371.8,460.3,283.2,0.07],[-16.75,356.4,359.7,448.2,271.2,-0.15],[-16.667,381.5,377.4,465.9,288.9,0.19],[-16.583,360.1,394.1,482.6,305.5,-1.54],[-16.5,365.2,370.1,458.7,281.6,-0.23],[-16.417,382.4,370.6,459.3,281.9,0.53],[-16.333,337.1,395.6,483.5,307.7,-2.67],[-16.25,387.1,398.6,487.3,309.8,-0.52],[-16.167,374.2,374.0,462.7,285.2,0.01],[-16.083,369.0,374.3,462.3,286.4,-0.24],[-16.0,390.8,406.9,493.7,320.1,-0.74],[-15.917,415.3,407.5,495.4,319.6,0.36],[-15.833,397.4,385.2,473.1,297.2,0.56],[-15.75,430.5,404.1,492.1,316.2,1.2],[-15.667,390.0,408.0,495.9,320.0,-0.82],[-15.583,390.3,422.2,510.7,333.7,-1.44],[-15.5,444.9,414.3,502.8,325.8,1.38],[-15.417,427.2,418.5,508.9,328.0,0.39],[-15.333,440.1,416.5,504.9,328.0,1.07],[-15.25,411.2,415.1,505.5,324.7,-0.17],[-15.167,443.7,448.9,538.7,359.1,-0.23],[-15.083,436.9,443.7,532.4,355.0,-0.31],[-15.0,447.0,450.5,540.7,360.4,-0.16],[-14.917,438.9,450.3,540.3,360.2,-0.51],[-14.833,463.2,431.2,517.4,345.0,1.49],[-14.75,432.9,451.0,541.2,360.8,-0.8],[-14.667,430.4,472.5,567.0,378.0,-1.78],[-14.583,424.3,444.0,532.8,355.2,-0.89],[-14.5,475.0,440.9,529.1,352.8,1.54],[-14.417,444.0,460.8,553.0,368.7,-0.73],[-14.333,441.7,463.2,555.8,370.5,-0.93],[-14.25,446.9,458.9,550.7,367.1,-0.53],[-14.167,459.0,456.1,547.3,364.9,0.13],[-14.083,447.5,473.3,568.0,378.6,-1.09],[-14.0,468.5,465.3,559.1,371.4,0.14],[-13.917,465.8,478.5,574.2,382.8,-0.53],[-13.833,470.6,493.7,592.4,395.0,-0.94],[-13.75,466.6,488.6,586.3,390.9,-0.9],[-13.667,488.1,477.5,573.0,382.0,0.44],[-13.583,482.6,506.9,608.3,405.5,-0.96],[-13.5,496.5,489.5,587.4,391.6,0.29],[-13.417,502.5,497.7,597.2,398.2,0.19],[-13.333,507.8,496.8,596.1,397.4,0.44],[-13.25,465.9,499.4,599.3,399.5,-1.34],[-13.167,499.4,505.8,606.9,404.6,-0.25],[-13.083,498.4,486.8,584.2,389.4,0.48],[-13.0,530.5,510.5,612.6,408.4,0.78],[-12.917,491.9,519.9,623.9,415.9,-1.08],[-12.833,511.3,529.7,635.7,423.8,-0.7],[-12.75,522.7,527.6,633.1,422.1,-0.18],[-12.667,525.9,537.4,644.8,429.9,-0.43],[-12.583,553.7,532.9,639.5,426.3,0.78],[-12.5,531.9,549.2,659.1,439.4,-0.63],[-12.417,561.2,560.8,672.9,448.6,0.02],[-12.333,521.5,544.2,653.0,435.3,-0.83],[-12.25,519.3,528.5,634.2,422.8,-0.35],[-12.167,577.9,570.1,684.1,456.1,0.28],[-12.083,567.9,578.5,694.2,462.8,-0.37],[-12.0,573.0,541.9,650.3,433.5,1.15],[-11.917,570.5,559.5,671.5,447.6,0.39],[-11.833,581.2,581.8,698.2,465.4,-0.02],[-11.75,554.7,590.8,709.0,472.7,-1.22],[-11.667,597.8,590.7,708.8,472.5,0.24],[-11.583,575.3,551.7,662.1,441.4,0.86],[-11.5,606.8,595.0,714.0,476.0,0.4],[-11.417,594.8,599.9,719.9,479.9,-0.17],[-11.333,561.8,597.8,717.3,478.2,-1.2],[-11.25,578.3,608.1,729.7,486.5,-0.98],[-11.167,625.9,617.1,740.5,493.7,0.29],[-11.083,607.2,600.9,721.1,480.8,0.21],[-11.0,606.6,608.3,729.9,486.6,-0.05],[-10.917,622.1,608.6,730.3,486.9,0.45],[-10.833,614.1,636.4,763.7,509.1,-0.7],[-10.75,616.0,621.2,745.5,497.0,-0.17],[-10.667,631.5,646.3,775.6,517.0,-0.46],[-10.583,636.1,661.1,793.3,528.9,-0.75],[-10.5,664.7,637.3,764.7,509.8,0.86],[-10.417,642.0,640.5,768.7,512.4,0.04],[-10.333,678.7,656.0,787.1,524.8,0.69],[-10.25,680.9,645.2,774.3,516.2,1.11],[-10.167,682.9,650.0,780.0,520.0,1.01],[-10.083,674.6,667.0,800.4,533.6,0.23],[-10.0,661.3,659.6,791.5,527.7,0.05],[-9.917,664.7,663.4,796.1,530.8,0.04],[-9.833,662.9,675.1,810.1,540.0,-0.36],[-9.75,655.4,685.1,822.1,548.0,-0.86],[-9.667,670.4,680.5,816.6,544.4,-0.3],[-9.583,663.0,677.6,813.1,542.1,-0.43],[-9.5,706.8,666.2,799.4,532.9,1.22],[-9.417,689.6,677.3,812.7,541.8,0.36],[-9.333,674.5,675.2,810.2,540.1,-0.02],[-9.25,650.5,668.6,802.3,534.9,-0.54],[-9.167,686.3,673.7,808.5,539.0,0.37],[-9.083,681.9,672.2,806.6,537.8,0.29],[-9.0,671.9,710.9,853.0,568.7,-1.1],[-8.917,672.8,712.4,854.8,569.9,-1.11],[-8.833,654.5,670.6,804.7,536.5,-0.48],[-8.75,706.8,713.2,855.9,570.6,-0.18],[-8.667,696.8,704.0,844.8,563.2,-0.2],[-8.583,745.7,688.8,826.5,551.0,1.65],[-8.5,699.7,703.8,844.6,563.1,-0.12],[-8.417,698.5,698.4,838.1,558.8,0.0],[-8.333,727.8,682.3,818.8,545.8,1.34],[-8.25,704.8,719.9,863.8,575.9,-0.42],[-8.167,705.7,696.3,835.5,557.0,0.27],[-8.083,696.2,697.7,837.3,558.2,-0.04],[-8.0,692.0,707.1,848.5,565.6,-0.43],[-7.917,729.6,697.0,836.4,557.6,0.94],[-7.833,720.2,714.4,857.3,571.5,0.16],[-7.75,732.5,689.1,827.0,551.3,1.26],[-7.667,694.5,688.3,826.0,550.7,0.18],[-7.583,700.3,661.3,793.5,529.0,1.18],[-7.5,682.7,688.8,826.5,551.0,-0.18],[-7.417,714.5,709.3,851.1,567.4,0.15],[-7.333,670.4,710.8,853.0,568.7,-1.14],[-7.25,703.8,694.7,833.6,555.7,0.26],[-7.167,711.3,697.4,836.8,557.9,0.4],[-7.083,714.8,691.5,829.8,553.2,0.67],[-7.0,670.0,677.5,813.0,542.0,-0.22],[-6.917,703.8,674.3,809.2,539.4,0.88],[-6.833,668.5,663.8,796.5,531.0,0.14],[-6.75,664.6,679.0,814.8,543.2,-0.42],[-6.667,651.2,683.7,820.4,547.0,-0.95],[-6.583,692.3,658.7,790.4,526.9,1.02],[-6.5,697.4,665.6,798.7,532.5,0.96],[-6.417,653.1,660.7,792.9,528.6,-0.23],[-6.333,646.1,670.5,804.5,536.4,-0.73],[-6.25,649.3,675.8,810.9,540.6,-0.78],[-6.167,696.0,664.2,797.0,531.4,0.96],[-6.083,664.3,634.2,761.1,507.4,0.95],[-6.0,631.6,631.0,757.2,504.8,0.02],[-5.917,603.9,645.2,774.2,516.1,-1.28],[-5.833,618.9,620.7,744.8,496.5,-0.06],[-5.75,646.9,630.9,757.0,504.7,0.51],[-5.667,653.5,630.2,756.2,504.1,0.74],[-5.583,609.3,609.1,730.9,487.3,0.01],[-5.5,595.7,628.4,754.1,502.7,-1.04],[-5.417,592.8,594.0,712.8,475.2,-0.04],[-5.333,561.7,609.3,731.2,487.5,-1.56],[-5.25,605.6,599.4,719.3,479.5,0.2],[-5.167,563.1,570.1,684.1,456.0,-0.25],[-5.083,595.0,568.5,682.3,454.8,0.93],[-5.0,242.2,561.7,674.1,449.4,-11.38],[-4.917,242.6,560.0,671.9,448.0,-11.34],[-4.833,252.0,556.2,667.5,445.0,-10.94],[-4.75,240.2,540.3,648.4,432.3,-11.11],[-4.667,249.4,549.9,659.9,439.9,-10.93],[-4.583,239.7,556.0,667.2,444.8,-11.38],[-4.5,226.7,525.1,630.1,420.1,-11.36],[-4.417,237.8,523.9,628.7,419.1,-10.92],[-4.333,236.1,497.6,597.1,398.1,-10.51],[-4.25,210.2,506.5,607.7,405.2,-11.7],[-4.167,237.0,520.7,624.8,416.6,-10.9],[-4.083,222.6,521.8,626.2,417.4,-11.47],[-4.0,221.1,478.0,573.6,382.4,-10.75],[-3.917,196.2,474.3,569.2,379.4,-11.73],[-3.833,201.8,460.6,554.5,366.7,-11.03],[-3.75,201.1,460.6,556.2,365.0,-10.86],[-3.667,208.9,462.2,558.7,365.8,-10.5],[-3.583,184.6,444.0,540.3,347.6,-10.77],[-3.5,185.6,423.4,520.1,326.7,-9.84],[-3.417,172.6,431.2,527.9,334.5,-10.7],[-3.333,183.3,413.6,508.1,319.0,-9.74],[-3.25,184.3,414.7,509.7,319.8,-9.7],[-3.167,164.2,399.9,496.4,303.4,-9.77],[-3.083,169.3,383.3,482.2,284.4,-8.65],[-3.0,174.6,386.4,485.1,287.7,-8.59],[-2.917,179.6,362.4,461.9,262.9,-7.35],[-2.833,168.5,357.7,457.8,257.6,-7.56],[-2.75,157.0,353.2,454.3,252.1,-7.76],[-2.667,325.1,350.6,452.9,248.4,-1.0],[-2.583,321.5,328.1,430.7,225.4,-0.26],[-2.5,318.5,325.0,427.3,222.6,-0.25],[-2.417,325.4,336.9,438.0,235.7,-0.46],[-2.333,314.1,324.3,426.1,222.6,-0.4],[-2.25,337.4,295.4,397.2,193.7,1.65],[-2.167,305.1,300.1,401.3,199.0,0.2],[-2.083,273.2,297.0,397.2,196.8,-0.95],[-2.0,313.0,306.6,407.7,205.4,0.26],[-1.917,295.2,308.8,409.6,207.9,-0.54],[-1.833,272.9,256.9,357.3,156.6,0.63],[-1.75,251.2,256.6,357.4,155.8,-0.22],[-1.667,223.7,256.4,356.8,156.0,-1.3],[-1.583,232.4,231.1,332.3,129.8,0.05],[-1.5,260.7,231.3,331.4,131.2,1.18],[-1.417,223.6,241.0,341.2,140.8,-0.7],[-1.333,208.1,232.5,332.8,132.1,-0.97],[-1.25,229.4,223.1,324.3,122.0,0.25],[-1.167,224.5,228.5,329.3,127.6,-0.16],[-1.083,225.4,214.0,314.9,113.2,0.45],[-1.0,220.8,197.3,298.1,96.4,0.93],[-0.917,229.1,192.3,293.2,91.5,1.46],[-0.833,183.6,195.3,296.7,93.9,-0.46],[-0.75,211.4,180.0,281.5,78.6,1.24],[-0.667,171.3,178.8,280.2,77.3,-0.29],[-0.583,197.1,188.3,289.8,86.9,0.34],[-0.5,183.5,188.8,290.2,87.4,-0.21],[-0.417,180.5,176.6,277.5,75.8,0.15],[-0.333,189.7,169.8,270.6,68.9,0.79],[-0.25,168.2,181.8,284.0,79.5,-0.53],[-0.167,185.1,177.3,279.6,75.1,0.3],[-0.083,177.5,159.0,258.9,59.1,0.74],[0.0,161.1,161.0,260.8,61.1,0.01]];
+const MATRIX = [{"signal":"Logs","option":"Elastic ML jobs, AIOps (log rate / pattern analysis, change points), ES|QL `CATEGORIZE` / `CHANGE_POINT`","license":"Platinum+. Self-managed Platinum is sold to existing customers only, so a new buyer needs an Enterprise quote","capability":"ML anomaly detection and log categorization","fit":"native to ES","kind":"license upgrade","maturity":"ES 9.5.3 (2026-09-03)","verdict":"No","note":"not free"},{"signal":"Logs","option":"Kibana alerting on Basic (ES query incl. ES|QL, index threshold, log threshold)","license":"free (ELv2 Basic)","capability":"thresholds; week-over-week ratio via ES|QL","fit":"fine on a rollup index, not on raw indices","kind":"built in","maturity":"ES / Kibana 9.5.x","verdict":"Pilot","note":"Basic has only Index / Server log connectors (Cases connector is Platinum), so alerts need a relay"},{"signal":"Logs","option":"ElastAlert2","license":"Apache-2.0","capability":"`new_term`, `spike`, `spike_aggregation`, `flatline`, `percentage_match`, `cardinality`","fit":"OK when every rule is aggregation-based: on the rollup, or terms aggregations on the raw indices","kind":"add-on (one container)","maturity":"2.31.0 (2026-07-22); ES 7/8/9 and OpenSearch 1–3","verdict":"Adopt","note":"single instance plus a dead-man's switch"},{"signal":"Logs","option":"Template key at ingest + transform rollup (Filebeat `replace` + `fingerprint`, or ingest `gsub` + `fingerprint`)","license":"free (Basic)","capability":"stateless `log.template_id` enables novelty and per-template rates","fit":"CPU spread across hosts; regex cost must be measured","kind":"add-on (config)","maturity":"Filebeat ≥ 7.8 for `replace`; transforms on Basic","verdict":"Adopt","note":"validated on ES 9.5.3 Basic"},{"signal":"Logs","option":"OTel Collector `drain` + `count` (second reader on hosts)","license":"Apache-2.0","capability":"real Drain templates, counted into Prometheus","fit":"Go, inline per node; ≈ 138k lines/s/core measured here, 92k on container stdout","kind":"add-on (agent fleet)","maturity":"contrib v0.160.0 (2026-09-02); `drain` alpha since v0.151.0","verdict":"Pilot","note":"validated on 40k container-stdout lines after 3 config fixes"},{"signal":"Logs","option":"Drain3 exporter (this repo)","license":"MIT library, stale (0.9.11, 2022-07-17)","capability":"Drain templates → Prometheus counters, cardinality cap","fit":"96–110k lines/s/core on synthetic lines with few templates (an upper bound); Loghub-2.0 Drain 7–10k lines/s/core → shard by service","kind":"add-on (needs a tee)","maturity":"PoC","verdict":"Pilot","note":"best for offline template discovery on samples"},{"signal":"Logs","option":"anomalyd agent + server (this repo, Go)","license":"in-house code, one dependency (klauspost/compress)","capability":"per-node Drain templates (container stdout: CRI/Docker envelopes) → counts to a central server; new-template, template-rate and volume findings on a seasonal median + MAD","fit":"1.3–1.5M lines/s/core on the same synthetic file (an upper bound); ~7 MB agent; only counts leave the host","kind":"add-on (agent fleet + 1 server)","maturity":"PoC; Go tests, Drain3 parity, Docker e2e","verdict":"Pilot","note":"iteration 2"},{"signal":"Logs","option":"Grafana OSS ES datasource + alerting","license":"AGPL-3.0","capability":"date-histogram queries with relative time ranges (week-over-week)","fit":"good on the rollup","kind":"add-on","maturity":"Grafana v13.2.1; needs ES ≥ 7.17","verdict":"Adopt","note":"for dashboards and seasonal ratios"},{"signal":"Logs","option":"OpenSearch Anomaly Detection (Random Cut Forest)","license":"Apache-2.0","capability":"streaming RCF, per-entity detectors","fit":"entity models live in JVM heap (thousands, not millions)","kind":"swap","maturity":"OpenSearch 3.8.0; AD plugin 3.8.0.0","verdict":"Later","note":"only if the platform ever moves"},{"signal":"Logs","option":"Sentry self-hosted","license":"FSL-1.1 (not OSI; Apache-2.0 after 2 years)","capability":"error grouping","fit":"needs SDK instrumentation","kind":"parallel pipeline","maturity":"26.8.0","verdict":"No","note":""},{"signal":"Logs","option":"Salesforce LogAI","license":"BSD-3","capability":"log AD toolkit","fit":"–","kind":"add-on","maturity":"dead: repo 404, last release 0.1.5 (2023-03-02)","verdict":"No","note":""},{"signal":"Logs","option":"LLM over raw logs","license":"per token","capability":"classification of every line","fit":"2 TB/day ≈ 500 B tokens/day ≈ $375k/month at the cheapest batch price (gpt-5-nano)","kind":"–","maturity":"–","verdict":"No","note":"infeasible"},{"signal":"Metrics","option":"grafana/promql-anomaly-detection","license":"Apache-2.0","capability":"adaptive bands (mean ± 2σ, CoV filter, 26 h smoothing, 1 d/1 w look-back); robust bands (median ± 2·MAD)","fit":"only on a tagged, pre-aggregated subset; ~9 / ~17 derived series per input","kind":"add-on (rule files)","maturity":"v0.2.1 (2025-10-20); last commit 2026-05-08","verdict":"Adopt","note":"validated end to end with promtool"},{"signal":"Metrics","option":"Sloth / Pyrra (SLO burn rate)","license":"Apache-2.0","capability":"multi-window, multi-burn-rate SLO alerts","fit":"tiny","kind":"add-on","maturity":"Sloth v0.16.0 (2026-04-04); Pyrra v0.10.1 (2026-06-25)","verdict":"Adopt","note":"Tier 0, the only paging tier"},{"signal":"Metrics","option":"GitLab z-score / seasonal-prediction rules (hand-written)","license":"free","capability":"z-score against 1-week mean/stddev; 3-week seasonal median","fit":"needs ≥ 4 weeks of retention; heavy `[1w]` windows","kind":"add-on","maturity":"pattern from Monitorama 2019","verdict":"No","note":"the upstream framework covers it better"},{"signal":"Metrics","option":"Prometheus built-ins (`predict_linear`, `quantile_over_time`, experimental `double_exponential_smoothing` / `mad_over_time`)","license":"Apache-2.0","capability":"building blocks; no seasonal Holt-Winters","fit":"fine on aggregates","kind":"built in","maturity":"Prometheus 3.14.0 (2026-08-18)","verdict":"Adopt","note":"`predict_linear` for capacity; keep experimental functions off paging paths"},{"signal":"Metrics","option":"Tier-2 scorer (this repo: seasonal median + MAD)","license":"this repo","capability":"robust z against the same time in previous weeks","fit":"hundreds to thousands of curated series","kind":"add-on (one container)","maturity":"PoC; selftest and end-to-end pass","verdict":"Later","note":"start here, then upgrade to MSTL"},{"signal":"Metrics","option":"anomalyd server (this repo, Go)","license":"in-house code","capability":"the Python scorer's seasonal median + MAD (matches to 1e-9) on every remote-written input, history in memory","fit":"5k inputs × 3 weeks of 5-min history ≈ 125 MB; full evaluation < 1 s CPU","kind":"add-on (remote_write target)","maturity":"PoC; Go tests, Docker e2e with Prometheus 3.14.0","verdict":"Pilot","note":"iteration 2; no per-run query_range"},{"signal":"Metrics","option":"statsforecast MSTL (+ MAD residuals)","license":"Apache-2.0","capability":"multi-seasonal forecast residuals","fit":"2–15 k series nightly on one VM (estimate)","kind":"add-on","maturity":"2.1.1 (2026-07-16)","verdict":"Later","note":"the Tier-2 upgrade path"},{"signal":"Metrics","option":"river (streaming) / PyOD (multivariate)","license":"BSD-3 / BSD-2","capability":"Half-Space Trees etc. / IForest, ECOD, peer outliers","fit":"per-sample / per-timestamp","kind":"add-on","maturity":"river 0.26.1 (2026-08-21); PyOD 3.6.5 (2026-08-17)","verdict":"Later","note":"situational"},{"signal":"Metrics","option":"Prophet","license":"MIT","capability":"trend + seasonality + holidays","fit":"seconds per series fit, so hours for 5 k series","kind":"add-on","maturity":"1.4.0 (2026-08-15)","verdict":"No","note":"at this scale; fine for < 500 business KPIs"},{"signal":"Metrics","option":"Grafana ML / Sift / Adaptive Metrics","license":"Grafana Cloud only. ML is included in Cloud tiers, capped by default at 10 forecasts × 100 series and 10 outlier detectors × 1,000 series per instance (raisable on request)","capability":"forecasting, outlier detection","fit":"the caps are far below 1–10 M series","kind":"SaaS swap","maturity":"–","verdict":"No","note":"not in Grafana OSS"},{"signal":"Metrics","option":"VictoriaMetrics vmanomaly","license":"proprietary, Enterprise-only (2-month trial)","capability":"many models, including online ones","fit":"reads Prometheus but writes only to VictoriaMetrics","kind":"add-on plus a VM sink","maturity":"licence key required since v1.5.0","verdict":"No","note":"not free"},{"signal":"Metrics","option":"Netdata","license":"agent GPL-3.0+; UI closed (NCUL1); Cloud free for ≤ 5 nodes","capability":"per-metric k-means anomaly bit","fit":"Prometheus collector defaults to 2,000 series/job","kind":"parallel agent","maturity":"active","verdict":"No","note":"as a central engine"},{"signal":"Metrics","option":"Merlion / ADTK / Luminaire / Kats","license":"BSD-3 / MPL-2.0 / Apache-2.0 / MIT","capability":"various","fit":"–","kind":"add-on","maturity":"stale or dead: Merlion 2.0.4 (2024-06), ADTK 0.6.2 (2020), Luminaire 0.4.3 (2024-01), Kats 0.2.0 (2022)","verdict":"No","note":""},{"signal":"Metrics","option":"Time-series foundation models (Chronos-2, TimesFM 2.5 weights, Toto 2.0, TSPulse)","license":"Apache-2.0 weights. Excluded: Moirai (CC-BY-NC-4.0), TimesFM 3.0 weights (non-commercial)","capability":"forecast-residual or AD-native scoring","fit":"CPU-feasible for thousands of aggregates every 5 min (estimate)","kind":"add-on","maturity":"chronos-forecasting 2.3.2 (2026-09-08)","verdict":"Later","note":", and only after a back-test: forecast FMs score below Sub-PCA/POLY on TSB-AD"},{"signal":"Traces","option":"OTel `span_metrics` connector","license":"Apache-2.0","capability":"100 % of spans → RED metrics → metric bands and SLOs","fit":"≈ 80 × operations × replicas series with default buckets (× app pods unless `resource_metrics_key_attributes: [service.name]`); guard with `aggregation_cardinality_limit`","kind":"add-on (collector tier)","maturity":"contrib v0.160.0; alpha","verdict":"Adopt","note":""},{"signal":"Traces","option":"OTel `tail_sampling` + `load_balancing`","license":"Apache-2.0","capability":"keeps errors, slow traces and a baseline; ~95–97 % fewer spans in ES","fit":"memory ∝ spans/s × `decision_wait`","kind":"add-on (2 tiers)","maturity":"beta / beta","verdict":"Adopt","note":"also a cost cut"},{"signal":"Traces","option":"Jaeger SPM (Monitor tab)","license":"Apache-2.0","capability":"RED per operation, read from Prometheus","fit":"–","kind":"config","maturity":"Jaeger v2.20.0 (2026-07-20); v1 end-of-life since 2025-12-31","verdict":"Adopt","note":"plan the v2 upgrade if still on v1"},{"signal":"Traces","option":"OTel `service_graph` connector","license":"Apache-2.0","capability":"edge request / failed counters","fit":"needs trace-ID load balancing","kind":"add-on","maturity":"alpha","verdict":"Pilot","note":""},{"signal":"Traces","option":"ES aggregations on `jaeger-span-*`","license":"free","capability":"duration / error per operation","fit":"biased after sampling; nested tags unusable in Lens","kind":"built in","maturity":"–","verdict":"Situational","note":"drill-down only"},{"signal":"Traces","option":"Grafana Jaeger datasource","license":"AGPL-3.0","capability":"trace view","fit":"no metrics, no alerting","kind":"built in","maturity":"Grafana v13.2.1","verdict":"Situational","note":"visualisation only"},{"signal":"Traces","option":"CRISP (Uber)","license":"Apache-2.0","capability":"critical-path attribution, batch","fit":"batch","kind":"add-on","maturity":"active","verdict":"Later","note":", for RCA"},{"signal":"Traces","option":"Jaeger v2 MCP tools (`get_critical_path`, `get_trace_errors`)","license":"Apache-2.0","capability":"trace evidence for LLM bundles","fit":"on demand","kind":"Jaeger v2 only","maturity":"v2.20.0","verdict":"Later","note":", with LLM triage"},{"signal":"Traces","option":"Research trace-structure AD (TraceAnomaly, TraceVAE)","license":"unlicensed / stale","capability":"structural anomalies","fit":"–","kind":"–","maturity":"research only","verdict":"No","note":""},{"signal":"Correlation & LLM","option":"Alertmanager","license":"Apache-2.0","capability":"grouping, inhibition, silences, routing","fit":"yes","kind":"already present","maturity":"v0.34.0 (2026-08-16)","verdict":"Adopt","note":"the single alert bus"},{"signal":"Correlation & LLM","option":"Keep OSS","license":"MIT","capability":"dedup, rule and topology correlation, incidents","fit":"yes, except AI correlation (Cloud/Enterprise)","kind":"add-on","maturity":"v0.54.3 (2026-09-09)","verdict":"Pilot","note":"iteration 2, optional"},{"signal":"Correlation & LLM","option":"Grafana OnCall OSS","license":"–","capability":"on-call","fit":"–","kind":"–","maturity":"archived 2026-03-24","verdict":"No","note":""},{"signal":"Correlation & LLM","option":"HolmesGPT","license":"Apache-2.0, CNCF Sandbox","capability":"on-demand LLM investigation (Prometheus, Elasticsearch, Grafana toolsets; no Jaeger toolset)","fit":"yes (bring your own LLM)","kind":"add-on","maturity":"0.41.0 (2026-09-08)","verdict":"Later","note":"human-triggered, ≤ 20/day"},{"signal":"Correlation & LLM","option":"Coroot CE","license":"Apache-2.0","capability":"eBPF APM, SLO-based RCA; AI RCA is Enterprise","fit":"partly","kind":"parallel stack (own ClickHouse)","maturity":"v1.26.0 (2026-09-07)","verdict":"Pilot","note":"on a subset only"},{"signal":"Correlation & LLM","option":"k8sgpt / Robusta","license":"Apache-2.0 / MIT","capability":"Kubernetes diagnosis / alert enrichment","fit":"yes","kind":"add-on (Kubernetes)","maturity":"k8sgpt v0.4.39; Robusta 0.49.0","verdict":"Situational","note":"only if on Kubernetes"},{"signal":"Correlation & LLM","option":"SigNoz / OpenObserve","license":"open core","capability":"full backends; anomaly alerts only in paid editions","fit":"no","kind":"swap","maturity":"v0.141.1 / v1.0.0","verdict":"No","note":""},{"signal":"Correlation & LLM","option":"LLM triage via API (bundle per Alertmanager group)","license":"$1–$780/month depending on model and volume","capability":"summary and hypotheses","fit":"–","kind":"add-on (small service)","maturity":"–","verdict":"Later","note":"cheap model, hard caps"},{"signal":"Correlation & LLM","option":"Self-hosted 7–14B model on 1 GPU","license":"~$290–$588/month (AWS g6.xlarge, 12–24 h/day)","capability":"single-shot bundle summaries; weak at agentic tool use","fit":"yes","kind":"add-on","maturity":"–","verdict":"Situational","note":"only if data must not leave the network or API spend exceeds ~$600/month"}];
+const COST = [
+  {"label": "LLM triage, 50 small bundles/day", "sub": "Gemini 2.5 Flash-Lite", "v": 1.05, "g": "oss", "f": "50 × 30 × (5,000 × $0.10 + 500 × $0.40) ÷ 1M", "src": "https://ai.google.dev/gemini-api/docs/pricing"},
+  {"label": "Log template mining CPU, 2 TB/day peak", "sub": "anomalyd agents, ≤ 0.8 vCPU", "v": 25.08, "g": "oss", "f": "231k lines/s ÷ (1.5M ÷ 5) lines/s per vCPU × $0.08925/h ÷ 2 × 730 h (c7i.large)", "src": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20%28N.%20Virginia%29/Linux/index.json"},
+  {"label": "LLM triage, 200 medium bundles/day", "sub": "Claude Haiku 4.5", "v": 96.0, "g": "oss", "f": "200 × 30 × (12,000 × $1 + 800 × $5) ÷ 1M", "src": "https://platform.claude.com/docs/en/about-claude/pricing"},
+  {"label": "Self-hosted 8B model, 1× L4, 24×7", "sub": "AWS g6.xlarge on-demand", "v": 587.5, "g": "oss", "f": "$0.8048/h × 730 h", "src": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20%28N.%20Virginia%29/Linux/index.json"},
+  {"label": "LLM triage, 500 large bundles/day", "sub": "Claude Sonnet 5", "v": 750.0, "g": "oss", "f": "500 × 30 × (20,000 × $2 + 1,000 × $10) ÷ 1M", "src": "https://platform.claude.com/docs/en/about-claude/pricing"},
+  {"label": "Elastic Serverless Complete, 200 GB/day", "sub": "graduated tiers, $2.3k–$3.5k", "v": 2327.46, "g": "vendor", "f": "graduated ingest + 1 month retained, logs + TSDS metrics; high end: GB × 1.66 metering, 100 B/sample", "src": "https://cloud.elastic.co/cloud-pricing-table?productType=serverless"},
+  {"label": "Grafana Cloud Pro, 200 GB/day", "sub": "60 s scrape, $8.1k–$8.7k", "v": 8069.0, "g": "vendor", "f": "$19 + logs process + write (+ retain per the calculator) + metrics, graduated", "src": "https://grafana.com/pricing/"},
+  {"label": "Elastic Serverless Complete, 2 TB/day", "sub": "graduated tiers, $10.6k–$17.4k", "v": 10600.53, "g": "vendor", "f": "graduated ingest + 1 month retained, logs + TSDS metrics; high end: GB × 1.66 metering, 100 B/sample", "src": "https://cloud.elastic.co/cloud-pricing-table?productType=serverless"},
+  {"label": "Datadog, 200 GB/day", "sub": "ingest + 15-day index + custom metrics", "v": 61800.0, "g": "vendor", "f": "GB × $0.10 + events × $1.70/M + (series − 10k) × $0.05 + 100 hosts × $15", "src": "https://www.datadoghq.com/pricing/list/"},
+  {"label": "Grafana Cloud Pro, 2 TB/day", "sub": "60 s scrape, $79.2k–$84.5k", "v": 79169.0, "g": "vendor", "f": "$19 + logs process + write (+ retain per the calculator) + metrics, graduated", "src": "https://grafana.com/pricing/"},
+  {"label": "Raw logs through an LLM, 2 TB/day", "sub": "cheapest batch price (gpt-5-nano), input only", "v": 375000.0, "g": "ruled", "f": "2 TB ÷ 4 B/token × $0.025/M × 30", "src": "https://developers.openai.com/api/docs/pricing"},
+  {"label": "Datadog, 2 TB/day", "sub": "ingest + 15-day index + custom metrics", "v": 609000.0, "g": "vendor", "f": "GB × $0.10 + events × $1.70/M + (series − 10k) × $0.05 + 100 hosts × $15", "src": "https://www.datadoghq.com/pricing/list/"}
+];
+const TP = [
+  { label: "Drain3 exporter (Python)", sub: "poc/logs, Drain3 0.9.11, host", v: 95000 },
+  { label: "OTel Collector drain path (Go), container stdout", sub: "CRI lines; file_log + container + json_parser → drain → count", v: 92354 },
+  { label: "OTel Collector drain path (Go)", sub: "otelcol-contrib 0.160.0, file_log + json_parser → drain → count", v: 137552 },
+  { label: "anomalyd agent (Go), container stdout", sub: "CRI lines, --container cri, GOMAXPROCS=1", v: 1526818 },
+  { label: "anomalyd agent (Go)", sub: "anomalyd bench, GOMAXPROCS=1", v: 1558492 }
+];
+const GROUP = { oss: ["OSS plan add-on", "var(--s1)"], vendor: ["Managed product", "var(--s2)"], ruled: ["Ruled out", "var(--s3)"] };
+const VERIFY = [
+  ["Prometheus rules", "promtool check + unit tests (3.14.0)", "pass"],
+  ["Upstream adaptive bands", "e2e: 3× step after 2 flat days", "fires ~7 min in, resolves ~17 min in"],
+  ["Alertmanager routing", "amtool check-config + route tests (v0.34.0)", "pass"],
+  ["OTel collector configs", "otelcol-contrib validate (0.160.0)", "pass after 3 fixes"],
+  ["OTel logs pipeline", "runtime on container stdout: 40k CRI lines in the /var/log/pods layout, JSON + text apps, 10 runs", "every line counted in 10 of 10 runs after 3 fixes; service = container name; same metric names as the Drain3 exporter"],
+  ["OTel traces pipeline", "runtime with telemetrygen (OTel synthetic trace generator)", "metric names match the rules"],
+  ["Filebeat template key", "Filebeat 9.5.3 on 40k CRI container-stdout lines (container + ndjson parsers)", "24 ids for JSON apps and for text apps; same templates as the ingest pipeline"],
+  ["Ingest pipeline + transform", "ES 9.5.3, default Basic license", "24 template ids, 116 rows, sum 300,000"],
+  ["ElastAlert2 rules", "2.31.0, all 6 rules against local ES + Alertmanager stand-in", "10 alerts, all with service and tier labels"],
+  ["Drain3 exporter", "benchmark, 300k synthetic lines", "96k–110k lines/s on one core (few templates: an upper bound)"],
+  ["Tier-2 scorer", "selftest + stub Prometheus API", "spike z = 19.7; 600–900 series/s per core"],
+  ["anomalyd (Go)", "go test -race; parity with the Python scorer and Drain3", "pass; scores to 1e-9, identical 23 templates"],
+  ["anomalyd benchmarks", "one core, same 300k-line file", "1.3–1.5M lines/s; score 9 µs/series with cached scale"],
+  ["anomalyd end to end", "Docker: Prometheus 3.14.0 backfill + remote_write, Alertmanager 0.34.0, logs as CRI container stdout", "3 injected incidents → 3 alerts; 0 rule failures, 0 failed samples"],
+  ["anomalyd agent DaemonSet", "kubeconform v0.8.0 -strict", "valid"]
+];
+const GOTCHAS = [
+  ["The count connector emits delta sums", "without delta_to_cumulative, the Prometheus exporter showed 536 of 300,000 lines."],
+  ["count + delta_to_cumulative can drop lines", "count stamps each delta with its records' time range, or now if they have none. Container logs carry times and file_log reads in parallel, so deltas overlap and up to 79 % of lines were dropped; clear the record time, then batch + groupbyattrs before count."],
+  ["Plain-text stdout needs a timestamp mask", "a stateless template key on lines starting with a timestamp gave 13,218 ids for 20k lines; masking <TS> first gives 24."],
+  ["The OTel container operator makes every pod a resource", "count then emits one series per pod and the Prometheus exporter keeps only one pod's value per label set; drop the resource after deriving service."],
+  ["A transform's destination must not match its source pattern", "logs-tmpl-1m sits inside logs-*, so the rollup is named anomaly-logs-tmpl-1m."],
+  ["ElastAlert2's Alertmanager alerter defaults to API v1", "current Alertmanager only serves v2."],
+  ["Aggregation rules query in whole buffer_time chunks", "use_run_every_query_size: true is needed for spike_aggregation."],
+  ["load_balancing DNS port must be a string", "an integer fails config decoding."],
+  ["set_semconv_span_name needs an explicit span context", "OTTL can't infer the context from that function alone."],
+  ["Adaptive bands detect onsets", "a sustained step is absorbed ~17–22 min after onset and a ×1.5 step never fires, so sustained shifts are the SLO tier's job."],
+  ["Filebeat (xxhash) and ingest (MurmurHash3) ids differ", "the template text is identical, but pick one variant per cluster."],
+  ["Re-exported anomaly_* labels break the upstream bands", "a scorer's output series that keep anomaly_name are selected again and fail with \"same labelset\"; strip them (anomalyd and the Python scorer both do)."],
+  ["A transform terms group-by drops documents with a missing key", "no service.name, or a template over the 1,024-char keyword limit, silently lost 510 of 300,510 lines; missing_bucket: true keeps them."],
+  ["A service that stops logging drops every template", "one volume alert plus one per template; an Alertmanager inhibit rule keeps only the volume alert."]
+];
+
+function h(tag, props, children) {
+  const n = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+  }
+  (children || []).forEach(c => n.append(c));
+  return n;
+}
+function withCode(text) {
+  const frag = document.createDocumentFragment();
+  String(text).split("`").forEach((part, i) => { if (!part) return; frag.append(i % 2 ? h("code", { text: part }) : document.createTextNode(part)); });
+  return frag;
+}
+const fmtUSD = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : v >= 1000 ? "$" + (Math.round(v / 100) / 10).toString().replace(/\.0$/, "") + "k" : v < 10 ? "$" + v.toFixed(2) : "$" + Math.round(v);
+const fmtH = hh => hh === 0 ? "now" : "−" + Math.abs(hh).toFixed(1) + " h";
+
+/* ---------------- hero chart ---------------- */
+function niceStep(max, n) { const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+function drawHero() {
+  const box = document.getElementById("hero-box");
+  const W = Math.max(300, box.clientWidth), H = Math.round(Math.max(220, Math.min(330, W * 0.36)));
+  const m = { l: 44, r: 12, t: 22, b: 28 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const top = Math.max(...HERO.map(d => Math.max(d[1], d[3])));
+  const step = niceStep(top, 4), yMax = Math.ceil(top / step) * step;
+  const x = hr => m.l + (hr + 36) / 36 * iw;
+  const y = v => m.t + (1 - Math.max(0, v) / yMax) * ih;
+  const line = idx => HERO.map((d, i) => (i ? "L" : "M") + x(d[0]).toFixed(1) + " " + y(d[idx]).toFixed(1)).join("");
+  const band = HERO.map((d, i) => (i ? "L" : "M") + x(d[0]).toFixed(1) + " " + y(d[3]).toFixed(1)).join("") +
+    HERO.slice().reverse().map(d => "L" + x(d[0]).toFixed(1) + " " + y(Math.max(0, d[4])).toFixed(1)).join("") + "Z";
+  let g = '<g class="grid">';
+  for (let v = 0; v <= yMax + 1e-9; v += step) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`;
+  g += '</g><g class="axis">';
+  for (let v = 0; v <= yMax + 1e-9; v += step) g += `<text x="${m.l - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${Math.round(v).toLocaleString("en-US")}</text>`;
+  const xt = W < 520 ? [-36, -24, -12, 0] : [-36, -30, -24, -18, -12, -6, 0];
+  xt.forEach(t => { g += `<text x="${x(t).toFixed(1)}" y="${H - 8}" text-anchor="${t === -36 ? "start" : t === 0 ? "end" : "middle"}">${t === 0 ? "now" : "−" + Math.abs(t) + " h"}</text>`; });
+  g += "</g>";
+  const flagged = HERO.map((d, i) => [d, i]).filter(([d]) => Math.abs(d[5]) > 4);
+  let dots = "";
+  flagged.forEach(([d]) => { dots += `<circle cx="${x(d[0]).toFixed(1)}" cy="${y(d[1]).toFixed(1)}" r="4" fill="var(--crit)" stroke="var(--surface)" stroke-width="2"/>`; });
+  // label the two injected incidents once each
+  const clusters = [];
+  flagged.forEach(([d]) => { const c = clusters[clusters.length - 1]; if (c && d[0] - c.end <= 0.5) { c.end = d[0]; if (Math.abs(d[5]) > Math.abs(c.peak[5])) c.peak = d; } else clusters.push({ start: d[0], end: d[0], peak: d }); });
+  let ann = "";
+  clusters.forEach(c => {
+    // Label sits centred above a spike's peak / below a drop's trough, where no other mark is drawn.
+    const up = c.peak[5] > 0, px = x(c.peak[0]), py = y(c.peak[1]);
+    const text = (up ? "Spike" : "Traffic drop") + ", peak z " + (up ? "+" : "") + c.peak[5].toFixed(1);
+    const half = text.length * 3.2, cx = Math.min(W - m.r - half, Math.max(m.l + half, px));
+    const ty = up ? Math.max(m.t + 2, py - 12) : Math.min(m.t + ih - 4, py + 22);
+    ann += `<text class="annot" x="${cx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle">${text}</text>`;
+  });
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Line chart of synthetic requests per second over 36 hours with a seasonal band; a spike about 22 hours ago and a traffic drop about 5 hours ago are flagged.">
+    ${g}
+    <path d="${band}" fill="var(--band)" stroke="none"/>
+    <path d="${line(2)}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${line(1)}" fill="none" stroke="var(--obs)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}${ann}
+    <line id="hero-x" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--rule-strong)" stroke-width="1" visibility="hidden"/>
+    <rect id="hero-hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent" tabindex="0" aria-label="Chart data; use arrow keys to step through points"/>
+  </svg>`;
+  const hit = box.querySelector("#hero-hit"), xl = box.querySelector("#hero-x"), tt = document.getElementById("hero-tt");
+  let cur = HERO.length - 1;
+  const show = i => {
+    cur = Math.max(0, Math.min(HERO.length - 1, i));
+    const d = HERO[cur], px = x(d[0]);
+    xl.setAttribute("x1", px); xl.setAttribute("x2", px); xl.setAttribute("visibility", "visible");
+    tt.replaceChildren(
+      h("div", { class: "tt-head", text: fmtH(d[0]) }),
+      h("div", { class: "tt-row" }, [h("b", { text: Math.round(d[1]).toLocaleString("en-US") + " req/s" }), h("span", {}, [h("i", { class: "key-line", style: "background: var(--obs)" }), "observed"])]),
+      h("div", { class: "tt-row" }, [h("b", { text: Math.round(d[2]).toLocaleString("en-US") }), h("span", {}, [h("i", { class: "key-line", style: "background: var(--s1)" }), "expected"])]),
+      h("div", { class: "tt-row" }, [h("b", { text: Math.round(Math.max(0, d[4])) + "–" + Math.round(d[3]) }), h("span", {}, [h("i", { class: "key-band" }), "band"])]),
+      h("div", { class: "tt-row" }, [h("b", { text: (d[5] > 0 ? "+" : "") + d[5].toFixed(1) }), h("span", { text: "robust z" })])
+    );
+    if (Math.abs(d[5]) > 4) tt.append(h("div", { class: "tt-flag" }, [h("i", { class: "key-dot" }), "Flagged: |z| > 4"]));
+    tt.hidden = false;
+    const fig = document.getElementById("hero-fig"), fr = fig.getBoundingClientRect(), br = box.getBoundingClientRect();
+    const left = br.left - fr.left + px, twidth = tt.offsetWidth;
+    tt.style.left = Math.min(fr.width - twidth - 8, Math.max(8, left + (left > fr.width / 2 ? -twidth - 12 : 12))) + "px";
+    tt.style.top = (br.top - fr.top + m.t + 4) + "px";
+  };
+  const hide = () => { tt.hidden = true; xl.setAttribute("visibility", "hidden"); };
+  hit.addEventListener("pointermove", e => { const r = hit.getBoundingClientRect(); const hr = (e.clientX - r.left) / r.width * 36 - 36; show(Math.round((hr + 36) / 36 * (HERO.length - 1))); });
+  hit.addEventListener("pointerleave", hide);
+  hit.addEventListener("focus", () => show(cur));
+  hit.addEventListener("blur", hide);
+  hit.addEventListener("keydown", e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); show(cur + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 12 : 1)); } });
+}
+function heroTable() {
+  const tb = document.querySelector("#hero-table tbody");
+  HERO.filter(d => Math.abs(d[5]) > 4).forEach(d => tb.append(h("tr", {}, [h("td", { text: fmtH(d[0]) }), h("td", { class: "num", text: Math.round(d[1]).toLocaleString("en-US") }), h("td", { class: "num", text: Math.round(d[2]).toLocaleString("en-US") }), h("td", { class: "num", text: (d[5] > 0 ? "+" : "") + d[5].toFixed(1) })])));
+}
+
+/* ---------------- matrix ---------------- */
+const SIGNALS = ["All", "Logs", "Metrics", "Traces", "Correlation & LLM"];
+const VERDICTS = ["Adopt", "Pilot", "Later", "No", "Situational"];
+const ICON = { Adopt: "✓", Pilot: "◐", Later: "→", No: "✕", Situational: "·" };
+const state = { signal: "All", verdicts: new Set(VERDICTS), hideSwaps: false, q: "" };
+function chips() {
+  const sc = document.getElementById("signal-chips"), vc = document.getElementById("verdict-chips");
+  SIGNALS.forEach(s => {
+    const b = h("button", { class: "chip", type: "button", id: "sig-" + s.replace(/\W+/g, "-").toLowerCase(), "aria-pressed": String(s === state.signal), text: s });
+    b.addEventListener("click", () => { state.signal = s; sc.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === b))); renderMatrix(); });
+    sc.append(b);
+  });
+  VERDICTS.forEach(v => {
+    const b = h("button", { class: "chip", type: "button", id: "ver-" + v.toLowerCase(), "aria-pressed": "true" }, [h("span", { class: "pill", "data-v": v }, [h("i", { text: ICON[v] })]), v]);
+    b.addEventListener("click", () => { state.verdicts.has(v) ? state.verdicts.delete(v) : state.verdicts.add(v); b.setAttribute("aria-pressed", String(state.verdicts.has(v))); renderMatrix(); });
+    vc.append(b);
+  });
+  document.getElementById("hide-swaps").addEventListener("change", e => { state.hideSwaps = e.target.checked; renderMatrix(); });
+  document.getElementById("matrix-search").addEventListener("input", e => { state.q = e.target.value.trim().toLowerCase(); renderMatrix(); });
+}
+function renderMatrix() {
+  const tb = document.getElementById("matrix-body");
+  const rows = MATRIX.filter(r =>
+    (state.signal === "All" || r.signal === state.signal) &&
+    state.verdicts.has(r.verdict) &&
+    (!state.hideSwaps || !/swap|licen[cs]e upgrade/i.test(r.kind)) &&
+    (!state.q || Object.values(r).join(" ").toLowerCase().includes(state.q)));
+  tb.replaceChildren(...rows.map(r => h("tr", {}, [
+    h("td", { class: "opt" }, [withCode(r.option), h("small", { text: r.signal })]),
+    h("td", {}, [h("span", { class: "pill", "data-v": r.verdict }, [h("i", { text: ICON[r.verdict] }), r.verdict]), r.note ? h("span", { class: "verdict-note" }, [withCode(r.note)]) : ""]),
+    h("td", {}, [withCode(r.capability)]),
+    h("td", {}, [withCode(r.fit)]),
+    h("td", {}, [withCode(r.license)]),
+    h("td", {}, [withCode(r.kind)]),
+    h("td", {}, [withCode(r.maturity)])
+  ])));
+  if (!rows.length) tb.append(h("tr", {}, [h("td", { class: "empty", colspan: "7", text: "No options match these filters. Clear the search or turn a verdict back on." })]));
+  document.getElementById("matrix-count").textContent = rows.length + " of " + MATRIX.length + " options";
+}
+
+/* ---------------- cost bars ---------------- */
+function renderCost() {
+  const wrap = document.getElementById("bars"), tt = document.getElementById("cost-tt"), card = document.getElementById("cost-card");
+  const LMAX = 6.7; // domain $1 .. ~$5M so the largest bar leaves room for its tip label; ticks stop at $1M
+  const pct = v => Math.max(0, Math.log10(v)) / LMAX * 100;
+  const ticks = [0, 1, 2, 3, 4, 5, 6];
+  const grid = () => ticks.map(t => h("span", { class: "gl", style: `left:${(t / LMAX * 100).toFixed(2)}%` }));
+  const axis = h("div", { class: "bar-axis", "aria-hidden": "true" }, [h("div"), h("div", { class: "axis-ticks" }, ticks.map(t => h("span", { style: `left:${(t / LMAX * 100).toFixed(2)}%`, text: ["$1", "$10", "$100", "$1k", "$10k", "$100k", "$1M"][t] })))]);
+  wrap.append(axis);
+  COST.forEach(c => {
+    const p = pct(c.v);
+    const track = h("div", { class: "track" }, [...grid(), h("span", { class: "bar", style: `width:${p.toFixed(2)}%; background:${GROUP[c.g][1]}` })]);
+    const val = h("span", { class: "bar-val", text: fmtUSD(c.v) });
+    val.style.left = p.toFixed(2) + "%";
+    track.append(val);
+    const row = h("div", { class: "bar-row", tabindex: "0", role: "listitem", "aria-label": `${c.label}, ${c.sub}: ${fmtUSD(c.v)} per month (${GROUP[c.g][0]})` }, [h("div", { class: "bar-label" }, [c.label, h("small", { text: c.sub })]), track]);
+    const show = () => {
+      tt.replaceChildren(h("div", { class: "tt-head", text: GROUP[c.g][0] }), h("div", { class: "tt-row" }, [h("b", { text: fmtUSD(c.v) + " / month" })]), h("div", { class: "tt-row" }, [h("span", { text: c.label })]), h("div", { class: "tt-row" }, [h("span", { text: c.sub })]), h("div", { class: "tt-row" }, [h("span", { text: c.f })]));
+      tt.hidden = false;
+      const cr = card.getBoundingClientRect(), rr = track.getBoundingClientRect();
+      const left = rr.left - cr.left + rr.width * p / 100;
+      tt.style.left = Math.min(cr.width - tt.offsetWidth - 8, Math.max(8, left - tt.offsetWidth / 2)) + "px";
+      tt.style.top = (rr.top - cr.top - tt.offsetHeight - 8) + "px";
+    };
+    row.addEventListener("pointerenter", show); row.addEventListener("focus", show);
+    row.addEventListener("pointerleave", () => tt.hidden = true); row.addEventListener("blur", () => tt.hidden = true);
+    wrap.append(row);
+  });
+  wrap.setAttribute("role", "list");
+  const tb = document.querySelector("#cost-table tbody");
+  COST.forEach(c => tb.append(h("tr", {}, [h("td", { text: c.label }), h("td", { text: c.sub }), h("td", { class: "num", text: c.v.toLocaleString("en-US", { maximumFractionDigits: 2 }) }), h("td", { class: "formula", text: c.f }), h("td", {}, [h("a", { href: c.src, target: "_blank", rel: "noopener", text: new URL(c.src).hostname })])])));
+}
+
+/* ---------------- anomalyd throughput ---------------- */
+{
+  const card = document.getElementById("tp-card"), wrap = document.getElementById("tp-bars"), tt = document.getElementById("tp-tt");
+  const MAX = 2000000, ticks = [0, 500000, 1000000, 1500000, 2000000]; // headroom for the longest label
+  const fmt = v => v >= 1e6 ? +(v / 1e6).toFixed(2) + " M" : Math.round(v / 1000) + " k";
+  const pct = v => v / MAX * 100;
+  const grid = () => ticks.map(t => h("span", { class: "gl", style: `left:${pct(t).toFixed(2)}%` }));
+  wrap.append(h("div", { class: "bar-axis", "aria-hidden": "true" }, [h("div"), h("div", { class: "axis-ticks" }, ticks.map(t => h("span", { style: `left:${pct(t).toFixed(2)}%`, text: t ? fmt(t) : "0" })))]));
+  TP.forEach(c => {
+    const p = pct(c.v);
+    const track = h("div", { class: "track" }, [...grid(), h("span", { class: "bar", style: `width:${p.toFixed(2)}%; background:var(--s1)` })]);
+    const val = h("span", { class: "bar-val", text: fmt(c.v) + " lines/s" });
+    if (p > 50) { // long bar: label inside its end so it never runs off narrow screens
+      val.style.right = (100 - p).toFixed(2) + "%";
+      val.style.padding = "0 8px 0 0";
+      val.style.color = "#fff";
+    } else {
+      val.style.left = p.toFixed(2) + "%";
+    }
+    track.append(val);
+    const row = h("div", { class: "bar-row", tabindex: "0", role: "listitem", "aria-label": `${c.label}, ${c.sub}: ${c.v.toLocaleString("en-US")} lines per second` }, [h("div", { class: "bar-label" }, [c.label, h("small", { text: c.sub })]), track]);
+    const show = () => {
+      tt.replaceChildren(h("div", { class: "tt-head", text: c.label }), h("div", { class: "tt-row" }, [h("b", { text: c.v.toLocaleString("en-US") + " lines/s" })]), h("div", { class: "tt-row" }, [h("span", { text: c.sub })]), h("div", { class: "tt-row" }, [h("span", { text: (c.v / TP[0].v).toFixed(1) + "× the Drain3 exporter" })]));
+      tt.hidden = false;
+      const cr = card.getBoundingClientRect(), rr = track.getBoundingClientRect();
+      const left = rr.left - cr.left + rr.width * p / 100;
+      tt.style.left = Math.min(cr.width - tt.offsetWidth - 8, Math.max(8, left - tt.offsetWidth / 2)) + "px";
+      tt.style.top = (rr.top - cr.top - tt.offsetHeight - 8) + "px";
+    };
+    row.addEventListener("pointerenter", show); row.addEventListener("focus", show);
+    row.addEventListener("pointerleave", () => tt.hidden = true); row.addEventListener("blur", () => tt.hidden = true);
+    wrap.append(row);
+  });
+  wrap.setAttribute("role", "list");
+  const tb = document.querySelector("#tp-table tbody");
+  TP.forEach(c => tb.append(h("tr", {}, [h("td", { text: c.label }), h("td", { text: c.sub }), h("td", { class: "num", text: c.v.toLocaleString("en-US") })])));
+}
+
+/* ---------------- verification ---------------- */
+function renderVerify() {
+  const tb = document.getElementById("verify-body");
+  VERIFY.forEach(([a, b, c]) => tb.append(h("tr", {}, [h("td", { text: a }), h("td", { text: b }), h("td", {}, [h("span", { class: "ok", text: c })])])));
+  const ol = document.getElementById("gotchas");
+  GOTCHAS.forEach(([a, b]) => ol.append(h("li", {}, [h("b", { text: a + ": " }), withCode(b)])));
+}
+
+function start() {
+  drawHero(); heroTable(); chips(); renderMatrix(); renderCost(); renderVerify();
+  let raf = 0; window.addEventListener("resize", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(drawHero); });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({startOnLoad: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "neutral"});
+</script>

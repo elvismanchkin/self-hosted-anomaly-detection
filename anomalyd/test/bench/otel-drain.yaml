@@ -1,0 +1,53 @@
+# Throughput reference for compare.sh: the OTel Collector logs path from
+# ../../../poc/otel/logs-drain-count.yaml (file_log + json_parser → drain → count), reading one
+# file from the beginning, with a nop exporter and internal metrics on :8888.
+receivers:
+  file_log:
+    include: [/data/s.ndjson]
+    start_at: beginning
+    max_log_size: 1MiB
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: body
+
+processors:
+  drain:
+    tree_depth: 4
+    merge_threshold: 0.4
+    max_clusters: 2000
+    body_field: message
+    masking_rules:
+      - {name: uuid, pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'}
+      - {name: ip,   pattern: '\b\d{1,3}(\.\d{1,3}){3}\b'}
+      - {name: num,  pattern: '\b\d+(\.\d+)?(ms|s|KB|MB|GB|%)?\b'}
+
+connectors:
+  count:
+    logs:
+      log.template.lines:
+        attributes:
+          - key: log.record.template
+            default_value: unannotated
+
+exporters:
+  nop:
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    logs:
+      receivers: [file_log]
+      processors: [drain]
+      exporters: [count]
+    metrics:
+      receivers: [count]
+      exporters: [nop]

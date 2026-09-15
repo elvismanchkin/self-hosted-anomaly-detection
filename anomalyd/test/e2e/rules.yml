@@ -1,0 +1,17 @@
+# Same naming and labels as the history that `anomalyd gen history` writes, so imported blocks
+# and live recording-rule output form one continuous series.
+groups:
+  - name: anomalyd-e2e-inputs
+    rules:
+      - record: anomaly:svc:requests:rate1m
+        expr: sum by (service) (synthetic_requests_rate)
+        labels:
+          anomaly_name: svc_requests
+          anomaly_type: requests
+          anomaly_strategy: adaptive
+      - record: anomaly:svc:errors:ratio1m
+        expr: max by (service) (synthetic_error_ratio)
+        labels:
+          anomaly_name: svc_error_ratio
+          anomaly_type: errors
+          anomaly_strategy: robust

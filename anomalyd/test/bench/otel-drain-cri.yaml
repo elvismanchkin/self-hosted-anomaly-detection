@@ -1,0 +1,55 @@
+# CONTAINER=cri variant of otel-drain.yaml: the same file wrapped as CRI container stdout, with the
+# `container` operator of ../../../poc/otel/logs-drain-count.yaml in front of json_parser.
+receivers:
+  file_log:
+    include: [/data/s.cri]
+    start_at: beginning
+    max_log_size: 1MiB
+    operators:
+      - type: container
+        format: containerd                  # the CRI format; `cri` is not a valid value
+        add_metadata_from_filepath: false   # one flat file here, not the /var/log/pods layout
+      - type: json_parser
+        parse_from: body
+        parse_to: body
+
+processors:
+  drain:
+    tree_depth: 4
+    merge_threshold: 0.4
+    max_clusters: 2000
+    body_field: message
+    masking_rules:
+      - {name: uuid, pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'}
+      - {name: ip,   pattern: '\b\d{1,3}(\.\d{1,3}){3}\b'}
+      - {name: num,  pattern: '\b\d+(\.\d+)?(ms|s|KB|MB|GB|%)?\b'}
+
+connectors:
+  count:
+    logs:
+      log.template.lines:
+        attributes:
+          - key: log.record.template
+            default_value: unannotated
+
+exporters:
+  nop:
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    logs:
+      receivers: [file_log]
+      processors: [drain]
+      exporters: [count]
+    metrics:
+      receivers: [count]
+      exporters: [nop]

@@ -1,0 +1,1034 @@
+# Links
+
+Every URL fetched or visited for this research. Notes say what was there / why it was fetched.
+
+## 2026-09-14
+
+### Logs on Elastic Basic (docs/research/01)
+
+- https://www.elastic.co/subscriptions — self-managed feature matrix (OSS/Basic/Gold/Platinum/Enterprise); parsed raw __NEXT_DATA__ JSON (WebFetch summary was WRONG, claimed ML free); footnotes 5 (AD/SLO rules Platinum+), 9 (Gold discontinued), 18 (Platinum existing customers only)
+- https://www.elastic.co/pricing/faq/licensing — ELv2 / SSPL / AGPLv3 (added Sept 2024) for free portions of source; releases stay ELv2; no Apache 2.0 distribution anymore
+- https://raw.githubusercontent.com/elastic/elasticsearch/main/LICENSE.txt — repo license header: triple AGPL/SSPL/ELv2 default; ELv2-only code only in x-pack/
+- https://raw.githubusercontent.com/elastic/elasticsearch/7.10/server/src/main/java/org/elasticsearch/Build.java — Flavor enum default/oss/unknown in 7.10
+- https://raw.githubusercontent.com/elastic/elasticsearch/main/server/src/main/java/org/elasticsearch/Build.java — flavor hard-coded "default" on main
+- https://api.github.com/repos/elastic/elasticsearch/releases — latest ES releases: 9.5.3 (2026-09-03), 8.19.21 (2026-09-01)
+- https://www.elastic.co/docs/reference/query-languages/esql/functions-operators/grouping-functions — ES|QL grouping functions list (CATEGORIZE preview 9.0, GA 9.1)
+- https://www.elastic.co/docs/reference/query-languages/esql/functions-operators/grouping-functions/categorize — CATEGORIZE: requires platinum; GA 9.1; options GA 9.2; limitations
+- https://www.elastic.co/docs/reference/query-languages/esql/commands/change-point — CHANGE_POINT: requires platinum; preview 9.1, GA 9.2; 22..1000 values; change types
+- https://www.elastic.co/docs/reference/aggregations/search-aggregations-bucket-categorize-text-aggregation — categorize_text agg params, 8.3 algorithm change, 100 tokens
+- https://www.elastic.co/docs/explore-analyze/machine-learning/machine-learning-in-kibana/xpack-ml-aiops — AIOps Labs: log rate analysis, log pattern analysis, change point detection
+- https://www.elastic.co/docs/explore-analyze/discover/detect-change-points — Discover change points GA 9.5, needs Platinum/Enterprise or trial
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana — list of Kibana connectors (Elastic Stack: Cases, Index, Obs AI Assistant, ServerLog; third-party list)
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/webhook-action-type — webhook connector (no license note on page)
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/slack-action-type — Slack connector page
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/email-action-type — email connector page
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/pagerduty-action-type — PagerDuty connector page
+- https://www.elastic.co/docs/explore-analyze/alerting/alerts/alerting-setup — Kibana alerting setup prerequisites (encryptionKey)
+- https://www.elastic.co/docs/explore-analyze/alerting/alerts/rule-types — rule types: ES query, index threshold, tracking containment; "some rule types are subscription features"
+- https://www.elastic.co/docs/explore-analyze/alerting/alerts/rule-type-es-query — ES query rule supports KQL/DSL/ES|QL; ES|QL group alerts GA 9.2
+- https://www.elastic.co/docs/solutions/observability/incident-management/create-log-threshold-rule — log threshold rule: group by, ratio rules; Serverless unavailable
+- https://www.elastic.co/docs/solutions/observability/incident-management/create-custom-threshold-rule — custom threshold rule
+- https://www.elastic.co/docs/solutions/observability/incident-management/create-an-anomaly-detection-rule — ML anomaly detection rule
+- https://www.elastic.co/docs/deploy-manage/license/manage-your-license-in-self-managed-cluster — Basic license by default, never expires; 30-day trial once per major
+- https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-info — GET / response example: build_flavor "default"
+- https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-license-get — GET _license response + license type enum
+- https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-xpack-info — GET _xpack response with per-feature available/enabled
+- https://www.elastic.co/docs/manage-data/lifecycle/rollup/migrating-from-rollup-to-downsampling — rollups legacy, downsampling replacement
+- https://www.elastic.co/docs/explore-analyze/transforms/transform-limitations — transform limits (max_page_search_size 500, sync delay, no data stream dest)
+- https://www.elastic.co/docs/llms.txt — Elastic docs llms index (small)
+- https://www.elastic.co/docs/sitemap.xml — docs sitemap used to locate pages
+- https://www.elastic.co/docs/reference/aggregations/search-aggregations-change-point-aggregation — change_point agg GA 9.2, preview 9.0–9.1, ≥22 buckets
+- https://raw.githubusercontent.com/elastic/elasticsearch/main/x-pack/plugin/ml/src/main/java/org/elasticsearch/xpack/ml/MachineLearning.java — LicensedFeature defs: categorize_text, change_point, frequent_item_sets aggs = PLATINUM
+- https://www.elastic.co/docs/reference/query-languages/esql — ES|QL reference overview
+- https://www.elastic.co/docs/explore-analyze/machine-learning/anomaly-detection — ML anomaly detection docs (license per subscriptions)
+- https://api.github.com/repos/jertel/elastalert2 — ElastAlert2 repo metadata: Apache-2.0, 1132 stars, pushed 2026-09-03
+- https://api.github.com/repos/jertel/elastalert2/releases — releases 2.31.0 (2026-07-22), 2.30.0, 2.29.0 …
+- https://api.github.com/repos/jertel/elastalert2/commits — recent commits (2026-09-03, CHANGELOG 2.32.0)
+- https://pypi.org/pypi/elastalert2/json — PyPI elastalert2 2.31.0, requires_python >=3.12
+- https://raw.githubusercontent.com/jertel/elastalert2/master/README.md — ES + OpenSearch support, Docker/Helm, Apache-2.0
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/recipes/faq.rst — FAQ: ES8/ES9 migration, ES_VERSION override, speed-up tips, no REST API, blacklist 1024 limit
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/ruletypes.rst — rule types and options (spike, flatline, new_term, cardinality, terms_size 50…)
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/running_elastalert.rst — run_every 5 min, buffer_time 45 min defaults, writeback_index
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/elastalert.rst — overview doc
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/configuration.rst — max_threads, es_hosts, max_query_size, scroll settings
+- https://raw.githubusercontent.com/jertel/elastalert2/master/docs/source/alerts.rst — list of ~45 alerters incl. Alertmanager, Slack, PagerDuty, HTTP POST
+- https://raw.githubusercontent.com/jertel/elastalert2/master/requirements.txt — pins elasticsearch==7.10.1 python client
+- https://raw.githubusercontent.com/jertel/elastalert2/master/elastalert/elastalert.py — --prometheus_port flag
+- https://raw.githubusercontent.com/jertel/elastalert2/master/elastalert/prometheus_wrapper.py — Prometheus counters exposed
+- https://github.com/jertel/elastalert2/discussions/451 — replicaCount 2 → duplicate alerts; single instance only
+- https://github.com/jertel/elastalert2/discussions/938 — scale by separate writeback_index per instance
+- https://github.com/jertel/elastalert2/discussions/544 — HA discussion (dead-man's switch suggestion; via search result)
+- https://github.com/jertel/elastalert2/discussions/865 — HA discussion (via search result)
+- https://pypi.org/pypi/drain3/json — Drain3 PyPI: 0.9.11 (2022-07-17) latest, MIT
+- https://github.com/logpai/Drain3/releases/latest — redirects to v0.9.11
+- https://raw.githubusercontent.com/logpai/Drain3/master/README.md — moved to logpai org, persistence (Kafka/Redis/file), masking, max_clusters LRU, match()
+- https://github.com/logpai/Drain3/commits/master.atom — last commit 2025-02-04
+- https://raw.githubusercontent.com/logpai/logparser/main/README.md — logparser toolkit: 16+ parsers incl. Drain, Brain (TSC'23); research/benchmark purpose
+- https://raw.githubusercontent.com/logpai/logparser/main/logparser/Brain/README.md — Brain Loghub-2k results (near 1.0 F1/accuracy)
+- https://raw.githubusercontent.com/logpai/loghub-2.0/main/README.md — Loghub-2.0 dataset sizes (HDFS 11.2M, Spark 16.1M, Thunderbird 16.6M lines); ISSTA'24 paper
+- https://raw.githubusercontent.com/logpai/loghub-2.0/main/RQs_experiments/README.md — RQ experiment index
+- https://raw.githubusercontent.com/logpai/loghub-2.0/main/RQs_experiments/RQ2/effectiveness_results.csv — GA/FGA/PA/FTA per parser (2k / 2.0)
+- https://raw.githubusercontent.com/logpai/loghub-2.0/main/RQs_experiments/RQ2/efficiency_results.csv — parse time per parser per dataset (2k / 2.0)
+- https://arxiv.org/abs/2308.10828 — Loghub-2.0 paper "A Large-scale Evaluation for Log Parsing Techniques: How Far are We?" (cited from README, not fetched)
+- https://github.com/salesforce/logai — returns HTTP 404 on 2026-09-14 (repo gone/private)
+- https://pypi.org/pypi/logai/json — LogAI PyPI 0.1.5 (2023-03-02), BSD-3
+- https://opensource.salesforce.com/logai/latest/ — LogAI docs site still returns 200
+- https://raw.githubusercontent.com/grafana/loki/main/pkg/pattern/drain/drain.go — Loki pattern Drain in Go, MIT header (faceair 2022)
+- https://github.com/faceair/drain — Go Drain port (MIT), last commit 2022-02-27
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/drainprocessor/README.md — OTel drain processor: alpha, contrib+k8s distros, config, seeding, persistence, metrics
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/CHANGELOG.md — drain processor added/alpha in v0.151.0; latest v0.160.0
+- https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/47235 — new component issue processor/drain (search result)
+- https://www.honeycomb.io/blog/taming-log-noise-with-the-opentelemetry-collector-s-drain-processor — Honeycomb blog on drain processor (search result, not fetched)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/connector/countconnector/README.md — count connector (alpha), attributes grouping
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/receiver/filelogreceiver/README.md — filelog receiver stability beta
+- https://www.elastic.co/docs/reference/beats/filebeat/configuring-output — "Only a single output may be defined"
+- https://www.elastic.co/docs/reference/beats/filebeat/fingerprint — Filebeat fingerprint processor (md5/sha1/sha256/sha384/sha512/xxhash)
+- https://www.elastic.co/docs/reference/beats/filebeat/replace-fields — Filebeat replace processor (regex pattern → replacement)
+- https://www.elastic.co/docs/reference/beats/filebeat/processor-script — Filebeat script processor (ES5.1 JS, Go impl)
+- https://www.elastic.co/docs/reference/beats/filebeat/dissect — Filebeat dissect processor
+- https://www.elastic.co/docs/reference/beats/filebeat/drop-event — Filebeat drop_event processor
+- https://www.elastic.co/docs/reference/beats/filebeat/kafka-output — Filebeat Kafka output
+- https://www.elastic.co/docs/reference/beats/filebeat/logstash-output — Filebeat Logstash output
+- https://www.elastic.co/docs/reference/ingest-processor/fingerprint-processor — ingest fingerprint processor (MD5/SHA-1/SHA-256/SHA-512/MurmurHash3), no license note
+- https://www.elastic.co/docs/reference/ingest-processor/gsub-processor — ingest gsub processor
+- https://www.elastic.co/docs/reference/ingest-processor/redact-processor — redact processor is a commercial feature (skip_if_unlicensed)
+- https://www.elastic.co/docs/reference/logstash/pipeline-to-pipeline — Logstash forked-path / output-isolator patterns
+- https://www.elastic.co/docs/reference/elasticsearch/rest-apis/paginate-search-results — PIT + search_after, _shard_doc fastest full iteration
+- https://grafana.com/docs/grafana/latest/datasources/elasticsearch/ — Grafana ES datasource: ES ≥7.17, 8.x, 9.x; ES|QL queries; alerting; standalone plugin since v13.0
+- https://grafana.com/docs/grafana/latest/datasources/elasticsearch/alerting/ — ES alerting: metrics+date_histogram supported; logs/raw data not supported; no template vars
+- https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rule-evaluation/queries-and-conditions/ — (fetched, near-empty page)
+- https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rules/queries-conditions/ — queries & conditions: fixed relative time ranges per query, math/reduce/threshold (via search)
+- https://github.com/opensearch-project/OpenSearch/releases/latest — OpenSearch 3.8.0 latest
+- https://github.com/opensearch-project/anomaly-detection/releases/latest — AD plugin 3.6.0.0 latest release tag
+- https://raw.githubusercontent.com/opensearch-project/anomaly-detection/main/README.md — AD plugin: RCF, Apache-2.0
+- https://docs.opensearch.org/latest/observing-your-data/ad/index/ — OpenSearch AD: RCF, 5 features default, category fields, entity sizing formula, 10,000 history points
+- https://docs.opensearch.org/latest/sql-and-ppl/ppl/commands/patterns/ — PPL patterns command: simple_pattern and brain methods
+- https://raw.githubusercontent.com/getsentry/sentry/master/LICENSE.md — Sentry license FSL-1.1-Apache-2.0
+- https://github.com/getsentry/self-hosted/releases/latest — Sentry self-hosted 26.8.0
+- https://www.elastic.co/support/eol — 9.x maint to 15-Oct-2027; 8.x EoM 15-Jan-2027 / EoS 15-Jul-2027; 7.17.x EoM 15-Apr-2025 / EoS 15-Jan-2026
+- https://www.elastic.co/guide/en/beats/filebeat/8.5/replace-fields.html — Filebeat replace processor docs exist from 8.5 (8.4 and earlier 404)
+- https://www.elastic.co/guide/en/beats/filebeat/8.4/replace-fields.html — 404 (replace processor not documented before 8.5)
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.12/fingerprint-processor.html — ingest fingerprint processor docs from 7.12
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.11/fingerprint-processor.html — 404 (no ingest fingerprint before 7.12)
+- https://www.elastic.co/guide/en/beats/filebeat/7.10/fingerprint.html — Filebeat fingerprint processor exists in 7.10
+- https://www.elastic.co/docs/reference/beats/filebeat/copy-fields — Filebeat copy_fields processor
+- https://www.elastic.co/docs/reference/logstash/persistent-queues — Logstash persistent queues
+- https://raw.githubusercontent.com/grafana/grafana/main/LICENSE — Grafana AGPLv3
+- https://www.elastic.co/docs/manage-data/data-store/data-streams/downsampling-concepts — "Downsampling works with time series data streams only"
+
+### Metrics on Prometheus / Grafana OSS (docs/research/02)
+
+- https://api.github.com/repos/grafana/promql-anomaly-detection — repo metadata: Apache-2.0, 420 stars, pushed 2026-08-30, not archived
+- https://api.github.com/repos/grafana/promql-anomaly-detection/releases — releases v0.1.0 (2025-07-08) … v0.2.1 (2025-10-20)
+- https://api.github.com/repos/grafana/promql-anomaly-detection/commits — last main commit 2026-05-08 (lt-band prediction_type label fix)
+- https://api.github.com/repos/grafana/promql-anomaly-detection/git/trees/main?recursive=1 — file list (rules/adaptive.yml, rules/robust.yml, examples)
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/README.md — framework README (anomaly_name/type/strategy labels, 24–26h warm-up)
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/README.md — strategy contract (anomaly:upper_band/lower_band/level, anomaly_select)
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/adaptive.yml — adaptive (mean/stddev) rule set, verbatim source for PoC
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/robust.yml — robust (median/MAD) rule set
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/examples/otel_demo.yml — example tagging rules (RED from spanmetrics)
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/examples/node_exporter.yml — example tagging rules (USE, node CPU/mem)
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/main/rules/extra/demo.yml — extra demo-only rules
+- https://grafana.com/blog/2024/10/03/how-to-use-prometheus-to-efficiently-detect-anomalies-at-scale/ — Grafana blog (Creixell/Acharya, Oct 2024) explaining bands; used in Grafana Cloud App O11y/Asserts
+- https://api.github.com/repos/prometheus/prometheus — Prometheus repo metadata
+- https://api.github.com/repos/prometheus/prometheus/releases/latest — latest v3.14.0 published 2026-08-18
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/querying/functions.md — function reference (experimental flags, mad_over_time, double_exponential_smoothing)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/CHANGELOG.md — changelog 2.49 → 3.14 (mad_over_time 2.49.0, holt_winters rename 3.0.0, NH stable 3.8.0, first_over_time stable 3.14.0)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/feature_flags.md — feature flags (promql-experimental-functions, concurrent-rule-eval, extended range selectors, fill modifiers)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/configuration/recording_rules.md — rule group limit/query_offset, missed-iteration behaviour
+- https://about.gitlab.com/blog/anomaly-detection-using-prometheus/ — GitLab 2019 z-score + seasonal median-of-3-weeks PromQL (read via in-app browser; WebFetch 403)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/querying/operators.md — limitk/limit_ratio experimental (promql-experimental-functions)
+- https://github.com/prometheus/prometheus/releases.atom — release feed: v3.15.0-rc.0 on 2026-09-14, 3.13.3 on 2026-09-07
+- https://api.github.com/repos/grafana/grafana/releases — Grafana v13.2.1 (2026-09-02) latest; 13.1.5/13.0.8/12.4.10 patch lines
+- https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rules/ — Grafana alert rule types overview
+- https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/alerting/fundamentals/alert-rules/_index.md — source of above (products: cloud/enterprise/oss)
+- https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/alerting/alerting-rules/create-recording-rules/create-grafana-managed-recording-rules.md — Grafana-managed recording rules: need own Prometheus-compatible TSDB target; OSS must enable; default_datasource_uid
+- https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/alerting/alerting-rules/create-data-source-managed-rule.md — DS-managed rules: create/edit only Mimir/Loki; Prometheus rules view-only; comparison table
+- https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/alerting/guides/alerting-on-forecasts.md — OSS docs: predict_linear alerts; seasonal forecasts = "Grafana Cloud Machine Learning" (grafanacloud-ml-metrics, yhat/yhat_upper/yhat_lower)
+- https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/ — Grafana ML (forecasting, outlier detection, Sift) "free to use with all Grafana Cloud accounts"
+- https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/forecasts/outlier-detection/ — Cloud outlier detection: DBSCAN and MAD (rolling 24h median), ≥3 series
+- https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/set-up/ — 404
+- https://grafana.com/docs/learning-hub/is-grafana-cloud-right-for-me/04-platform-wide-tools/02-machine-learning/ — 404
+- https://mustafa.net/2026/03/12/grafana-machine-learning-predictive-analytics-for-your-homelab/ — blog claims `grafana-cli plugins install grafana-ml-app` on self-hosted; contradicted by catalog (no public versions)
+- https://grafana.com/api/plugins/grafana-ml-app — 404 "plugin not found" (not in public catalog)
+- https://grafana.com/api/plugins/grafana-ml-app/versions — empty items list
+- https://grafana.com/api/plugins — public plugin catalog (357 items) searched for anomaly/forecast plugins
+- https://grafana.com/api/plugins/grafana-llm-app — LLM app v1.0.8 (2026-04-17), public
+- https://grafana.com/pricing/ — pricing page (Adaptive Metrics listed under Cloud)
+- https://raw.githubusercontent.com/grafana/metrics-drilldown/main/README.md — Metrics Drilldown (AGPL-3.0), queryless browsing, not AD
+- https://github.com/grafana/metrics-drilldown/releases.atom — v2.5.1 2026-08-24
+- https://pypi.org/pypi/prophet/json — prophet 1.4.0 (2026-08-15), MIT
+- https://pypi.org/pypi/statsforecast/json — statsforecast 2.1.1 (2026-07-16), Apache-2.0
+- https://pypi.org/pypi/pyod/json — pyod 3.6.5 (2026-08-17), BSD-2-Clause
+- https://pypi.org/pypi/salesforce-merlion/json — merlion 2.0.4 (2024-06-20), BSD-3
+- https://pypi.org/pypi/adtk/json — adtk 0.6.2 (2020-04-17), MPL-2.0
+- https://pypi.org/pypi/river/json — river 0.26.1 (2026-08-21), BSD-3
+- https://pypi.org/pypi/luminaire/json — luminaire 0.4.3 (2024-01-31), Apache-2.0
+- https://pypi.org/pypi/kats/json — kats 0.2.0 (2022-03-15), MIT
+- https://pypi.org/pypi/sktime/json — sktime 1.1.0 (2026-07-28), BSD-3
+- https://pypi.org/pypi/darts/json — darts 0.47.0 (2026-09-04), Apache-2.0
+- https://pypi.org/pypi/statsmodels/json — statsmodels 0.15.0 (2026-08-27), BSD-3 (STL/MSTL)
+- https://pypi.org/pypi/prometheus-api-client/json — prometheus-api-client 0.7.2 (2026-04-13), MIT
+- https://pypi.org/pypi/prometheus-client/json — prometheus_client 0.26.0 (2026-07-24), Apache-2.0
+- https://github.com/salesforce/Merlion/commits.atom — last commit 2026-03-11 (nab.py), previous 2024-06
+- https://github.com/facebookresearch/Kats/commits.atom — only Meta-internal Pyre/type-suppression syncs 2026; no release since 2022
+- https://github.com/arundo/adtk/commits.atom — last commit 2020-04-17
+- https://github.com/zillow/luminaire/commits.atom — last commit 2026-06-02 (CI cache bump only)
+- https://github.com/facebook/prophet/commits.atom — last commit 2026-08-27
+- https://github.com/Nixtla/statsforecast/commits.atom — last commit 2026-09-11
+- https://github.com/yzhao062/pyod/commits.atom — last commit 2026-09-08
+- https://github.com/online-ml/river/commits.atom — last commit 2026-09-14
+- https://raw.githubusercontent.com/Nixtla/statsforecast/main/README.md — MSTL, anomaly detection via in-sample intervals, 1M series claims, Spark/Dask/Ray
+- https://raw.githubusercontent.com/online-ml/river/main/README.md — river online ML overview
+- https://raw.githubusercontent.com/online-ml/river/main/river/anomaly/__init__.py — river.anomaly: HalfSpaceTrees, GaussianScorer, QuantileFilter, PredictiveAnomalyDetection, SAD, LODA, LOF, OneClassSVM
+- https://raw.githubusercontent.com/online-ml/river/main/river/time_series/__init__.py — river.time_series: HoltWinters, SNARIMAX
+- https://raw.githubusercontent.com/yzhao062/pyod/master/README.rst — PyOD 3 (61 detectors incl. time-series: MatrixProfile, SpectralResidual, KShape; ADEngine; agentic)
+- https://docs.victoriametrics.com/anomaly-detection/ — vmanomaly overview; Enterprise license required since v1.5.0
+- https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/docs/anomaly-detection/CHANGELOG.md — vmanomaly v1.30.5 released 2026-09-10
+- https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/docs/anomaly-detection/FAQ.md — "part of enterprise package", free trial license for evaluation
+- https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/docs/anomaly-detection/components/reader.md — VmReader: datasource_url "victoriametrics/prometheus", /query_range
+- https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/docs/anomaly-detection/components/writer.md — VmWriter writes via /api/v1/import (VM-specific)
+- https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/docs/anomaly-detection/components/models.md — models list, output anomaly_score (>1 = anomaly), yhat/yhat_lower/yhat_upper
+- https://victoriametrics.com/products/enterprise/trial/ — Enterprise trial: free license for 2 months, no public pricing
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/command-line/prometheus.md — CLI flags: --query.max-samples 50000000, --web.enable-remote-write-receiver, retention flag deprecated, --rules.max-concurrent-evals 4
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/configuration/configuration.md — sample_limit/label_limit/target_limit, scrape_native_histograms, convert_classic_histograms_to_nhcb, storage.tsdb.retention, write_relabel_configs
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/storage.md — "average of only 1-2 bytes per sample"; retention flags
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/docs/federation.md — hierarchical federation of aggregated data, match[] param
+- https://github.com/netdata/netdata/releases.atom — Netdata v2.11.0 (2026-08-12)
+- https://raw.githubusercontent.com/netdata/netdata/master/LICENSE — GPL-3.0
+- https://raw.githubusercontent.com/netdata/netdata/master/README.md — Agent GPLv3+, UI closed-source NCUL1, Cloud free community tier
+- https://raw.githubusercontent.com/netdata/netdata/master/src/ml/README.md — k-means k=2, 4h training, consensus of models, anomaly bit, anomaly_detection.* charts
+- https://raw.githubusercontent.com/netdata/netdata/master/src/ml/ml-configuration.md — 18 models/dimension, train every 3h, ~54h coverage, few KB per model
+- https://raw.githubusercontent.com/netdata/netdata/master/src/go/plugin/go.d/collector/prometheus/integrations/prometheus_endpoint.md — go.d prometheus collector: max_time_series 2000, max_time_series_per_metric 200
+- https://raw.githubusercontent.com/netdata/netdata/master/src/exporting/prometheus/README.md — /api/v1/allmetrics?format=prometheus scrape endpoint
+- https://www.netdata.cloud/pricing/ — Community free max 5 active connected nodes; Business $4.50/node/month; Enterprise on-prem from 200 nodes (read via in-app browser)
+- https://github.com/slok/sloth/releases.atom — Sloth v0.16.0 (2026-04-04)
+- https://raw.githubusercontent.com/slok/sloth/HEAD/LICENSE — Apache-2.0
+- https://raw.githubusercontent.com/slok/sloth/main/README.md — Sloth features (MWMB, CLI, K8s CRDs, OpenSLO, SLI plugins, 30/28d windows)
+- https://raw.githubusercontent.com/slok/sloth/main/examples/_gen/getting-started.yml — generated rules: 15 recording + 2 alerts; 14.4/6/3/1 burn factors; 30d via sum_over_time/count_over_time
+- https://github.com/pyrra-dev/pyrra/releases.atom — Pyrra v0.10.1 (2026-06-25)
+- https://raw.githubusercontent.com/pyrra-dev/pyrra/HEAD/LICENSE — Apache-2.0
+- https://raw.githubusercontent.com/pyrra-dev/pyrra/main/README.md — Pyrra: UI, K8s/filesystem operator, 4 MWMB alerts, burnrate rules, Thanos support
+- https://github.com/thanos-io/thanos/releases.atom — Thanos v0.42.4 (2026-07-30)
+- https://raw.githubusercontent.com/thanos-io/thanos/main/docs/components/sidecar.md — sidecar requirements (min=max block duration 2h, external_labels, admin API)
+- https://raw.githubusercontent.com/thanos-io/thanos/main/LICENSE — Apache-2.0
+- https://github.com/grafana/mimir/releases.atom — Mimir 3.2.1 (2026-09-10)
+- https://github.com/VictoriaMetrics/VictoriaMetrics/releases.atom — VictoriaMetrics v1.152.0 (2026-09-14)
+- https://github.com/coroot/coroot/releases.atom — Coroot 1.26.0 (2026-09-07)
+- https://raw.githubusercontent.com/coroot/coroot/HEAD/LICENSE — Apache-2.0
+- https://github.com/robusta-dev/krr/releases.atom — KRR v1.30.0 (2026-08-24)
+- https://raw.githubusercontent.com/robusta-dev/krr/HEAD/LICENSE — MIT
+- https://github.com/AICoE/prometheus-anomaly-detector/commits.atom — last commit 2023-05-27 (dead)
+- https://github.com/numaproj/numalogic/commits.atom — last commit 2024-09-26; v0.13.2
+- https://pypi.org/pypi/numalogic/json — numalogic 0.13.2 (2024-09-19), Apache-2.0
+- https://github.com/earthgecko/skyline/releases.atom — Skyline fork v4.0.0 (2023-12-11)
+- https://github.com/etsy/skyline/commits.atom — last commit 2015-10-14 (dead)
+- https://github.com/twitter/AnomalyDetection/commits.atom — last commit 2015-08-31 (dead)
+- https://pypi.org/pypi/chronos-forecasting/json — chronos-forecasting 2.3.2 (2026-09-08), Apache-2.0
+- https://pypi.org/pypi/timesfm/json — timesfm 3.0.2 (2026-09-09), Apache-2.0
+- https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-metrics/ — Adaptive Metrics = Grafana Cloud feature
+- https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/sift/ — Sift "free diagnostic assistant included in Grafana Cloud"
+- https://raw.githubusercontent.com/AICoE/prometheus-anomaly-detector/master/README.md — PAD: Prophet/Fourier on Prometheus data, serves yhat/yhat_lower/yhat_upper on /metrics :8080
+- https://grafana.com/api/plugins/grafana-polystat-panel — sanity check that plugin API returns data for public plugins
+- https://api.github.com/repos/grafana/grafana-ml-sdk/releases/latest — Not Found (no public Grafana ML SDK repo)
+- https://api.github.com/rate_limit — unauthenticated GitHub API quota exhausted; switched to github.com Atom feeds
+
+### Traces with Jaeger / OTel (docs/research/03)
+
+- https://api.github.com/repos/jaegertracing/jaeger/releases/latest — Jaeger latest release v2.20.0 (2026-07-20) + notes
+- https://api.github.com/repos/jaegertracing/jaeger/releases?per_page=40 — full Jaeger release list (last v1 = v1.76.0, 2025-12-03; v2.14.0 stops v1 binaries)
+- https://api.github.com/repos/open-telemetry/opentelemetry-collector-contrib/releases/latest — OTel contrib latest v0.160.0 (2026-09-02)
+- https://api.github.com/repos/open-telemetry/opentelemetry-collector/releases/latest — OTel core v1.66.0/v0.160.0 (2026-09-02)
+- https://api.github.com/repos/jaegertracing/jaeger-ui/releases/latest — Jaeger UI v2.20.0 (2026-07-20)
+- https://www.jaegertracing.io/docs/latest/migration/ — v1→v2 migration page (points to Google Doc; no dates)
+- https://github.com/jaegertracing/jaeger/issues/6321 — official "Jaeger v1 End-of-life" issue: EOL Dec 31 2025, no v1 releases from Jan 1 2026
+- https://www.jaegertracing.io/docs/latest/storage/ — v2.20 storage backends (Cassandra/ES/OpenSearch/Badger/Memory stable, ClickHouse experimental, Kafka, gRPC remote)
+- https://www.jaegertracing.io/docs/latest/architecture/spm/ — SPM doc page (rendered)
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/architecture/spm.md — SPM doc source v2.20 (metric names, formula, troubleshooting, ES/OpenSearch direct option)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/config-spm.yaml — official SPM config (spanmetrics + prometheus metric backend)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/config-spm-elasticsearch.yaml — official SPM config computing RED directly from ES
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/config-elasticsearch.yaml — official ES storage config (indices, prefixes, metric_backends)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/CHANGELOG.md — Jaeger CHANGELOG (ES SPM added v2.8–v2.9, ClickHouse SPM, v1 removal in v2.14, ES v6 removed v2.20)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/components.go — OTel components bundled in Jaeger v2 binary (tail_sampling, spanmetrics, prometheus exporter; no load_balancing/transform)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/go.mod — Jaeger v2.20.0 pins OTel contrib v0.155.0
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/components/ext/connector/spanmetricsconnector/factory.go — Jaeger re-exports upstream spanmetrics factory
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/config/promcfg/config.go — Jaeger Prometheus metric-backend config keys
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/metricstore/prometheus/options.go — defaults: metric_namespace traces_span_metrics, latency_unit ms
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/metricstore/elasticsearch/query_builder.go — ES-direct SPM query (tag.error, tag.span@kind, operationName terms size 10)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/metricstore/elasticsearch/reader.go — ES-direct SPM reader
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/metricstore/elasticsearch/factory.go — ES metricstore factory
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/elasticsearch/esclient/testdata/create_template/span.es8-9.json — jaeger-span index template (field names/types)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/elasticsearch/config/config.go — ES storage config keys incl. tags_as_fields
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/v2/elasticsearch/tracestore/to_dbmodel.go — OTLP→ES dbmodel (span.kind/status → tags)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/v2/elasticsearch/tracestore/core/writer.go — tag elevation to tag.* only if tags_as_fields set
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/docker-compose/monitor/docker-compose-elasticsearch.yml — ES SPM demo compose
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/docker-compose/monitor/README.md — SPM demo README (two options)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/main.go — v2 main
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/command.go — `jaeger version` subcommand
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/version/command.go — version command
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/version/handler.go — /version HTTP handler
+- https://hub.docker.com/v2/repositories/jaegertracing/jaeger/tags — v2 image tags (2.20.0 latest)
+- https://hub.docker.com/v2/repositories/jaegertracing/jaeger-collector/tags — v1 image tags (last 1.76.0, 2025-12-03)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/README.md — spanmetrics connector README (config keys, rename to span_metrics, cardinality)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/metadata.yaml — spanmetrics stability alpha + feature gates
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/config.go — spanmetrics config struct
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/factory.go — defaults (flush 60s, namespace traces.span.metrics)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/testdata/config.yaml — spanmetrics test configs
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/CHANGELOG.md — contrib CHANGELOG (renames, feature gates, tail_sampling additions)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/tailsamplingprocessor/README.md — tail_sampling README (policies, num_traces, decision_wait, scaling)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/tailsamplingprocessor/metadata.yaml — tail_sampling stability beta
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/loadbalancingexporter/README.md — load_balancing exporter README
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/loadbalancingexporter/metadata.yaml — load_balancing stability (beta traces/logs, alpha metrics)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/adaptivetailsamplingprocessor/metadata.yaml — adaptive_tail_sampling (development, no distribution)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/adaptivetailsamplingprocessor/README.md — adaptive_tail_sampling README
+- https://opentelemetry.io/docs/concepts/sampling/ — OTel sampling concepts; "1% or lower … represent the other 99%", tail sampling downsides
+- https://opentelemetry.io/docs/collector/scaling/ — scaling stateful components; LB-exporter layer in front of tail-sampling/span-to-metrics collectors
+- https://opentelemetry.io/blog/2022/tail-sampling/ — OTel blog on tail sampling (defaults num_traces 50000, decision_wait 30s; two-layer setup)
+- https://www.elastic.co/observability-labs/blog/tail-sampling-memory-opentelemetry — Elastic 2026-07-21: span-ingest + Pebble tail storage, −65% heap, ~2x CPU
+- https://www.datadoghq.com/blog/control-trace-volume-with-opentelemetry-tail-based-sampling/ — Datadog 2026-08-21: policy stack, ~98% volume reduction, span metrics before sampling
+- https://www.michal-drozd.com/en/blog/otel-tail-sampling/ — personal blog on tail sampling sizing (HTTP 403, not read)
+- https://www.elastic.co/observability-labs/blog/opentelemetry-collector-reference-architectures — Elastic 2026-03-31: derive spanmetrics before sampling; traceID LB topology
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.160.0/connector/forwardconnector/metadata.yaml — forward connector (beta traces)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-releases/v0.160.0/distributions/otelcol-contrib/manifest.yaml — otelcol-contrib v0.160.0 component manifest (LB, tail sampling, spanmetrics, transform, pebble tail storage)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.160.0/CHANGELOG.md — core changelog (queuebatch processor v0.158.0)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.160.0/processor/batchprocessor/metadata.yaml — batch processor beta
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.160.0/processor/memorylimiterprocessor/README.md — memory_limiter keys
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/transformprocessor/README.md — set_semconv_span_name (semconv 1.37.0–1.43.0)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/transformprocessor/metadata.yaml — transform processor beta
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/prometheusexporter/README.md — prometheus exporter options (enable_open_metrics for exemplars, translation_strategy)
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/prometheusexporter/metadata.yaml — prometheus exporter beta
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/receiver/jaegerreceiver/metadata.yaml — jaeger receiver beta
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/receiver/jaegerreceiver/README.md — jaeger receiver protocols/ports
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/servicegraphconnector/metadata.yaml — service_graph connector alpha, rename, gates
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/servicegraphconnector/README.md — service graph metrics, needs LB tier
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/exceptionsconnector/metadata.yaml — exceptions connector alpha
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/spanmetricsconnector/connector.go — collector.instance.id attribute handling
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/extension/tailstorage/pebbletailstorageextension/metadata.yaml — pebble_tail_storage extension (alpha, contrib)
+- https://grafana.com/docs/grafana/latest/datasources/jaeger/ — Grafana Jaeger datasource capabilities (no metrics/alerting; standalone plugin Grafana ≥12.3.0)
+- https://grafana.com/docs/grafana/latest/datasources/jaeger/query-editor/ — Jaeger query types (Search, TraceID, Dependency graph, Import)
+- https://grafana.com/docs/grafana/latest/datasources/jaeger/configure-jaeger-data-source/ — 404
+- https://grafana.com/docs/grafana/latest/datasources/jaeger/configure/ — Jaeger DS config (trace-to-logs Loki/Splunk)
+- https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/configure-trace-to-logs/ — trace-to-logs supported log sources (incl. Elasticsearch) for Tempo DS
+- https://www.elastic.co/docs/reference/elasticsearch/mapping-reference/nested — nested fields not usable in Kibana Lens; nested limits
+- https://www.elastic.co/docs/reference/elasticsearch/index-settings/mapping-limit — total_fields.limit default 1000
+- https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-transform-put-transform — transform API; supported pivot aggregations (via search snippet)
+- https://www.elastic.co/docs/explore-analyze/transforms/transform-aggregations — 404
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/storage/elasticsearch.md — Jaeger v2.20 ES storage doc (index naming, rollover, ILM)
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/storage/opensearch.md — Jaeger OpenSearch doc
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/storage/_index.md — Jaeger storage index page
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/features.md — Jaeger features (topology graphs, sampling)
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v2/2.20/deployment/frontend-ui.md — UI config (monitor.menuEnabled, criticalPathEnabled)
+- https://api.github.com/repos/jaegertracing/documentation/contents/content/docs — docs repo listing
+- https://api.github.com/repos/jaegertracing/jaeger/git/trees/v2.20.0?recursive=1 — Jaeger repo tree at v2.20.0
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/config-tail-sampling-service-name-policy.yaml — Jaeger v2 tail sampling example
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/config-elasticsearch-data-stream.yaml — Jaeger v2 ES data-stream config
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/config.go — jaeger_query storage keys
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/internal/mcptools/config.go — MCP defaults (100 results, 20 span details)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/internal/mcptools/INSTRUCTIONS.md — MCP LLM instructions (tools, skills)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/docs/adr/002-mcp-server.md — Jaeger MCP server ADR (tool list, port 16687)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/jaegercli/command.go — v2 CLI entry
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/version/build.go — build_info metric
+- https://raw.githubusercontent.com/jaegertracing/jaeger-ui/v2.20.0/CHANGELOG.md — UI changelog (critical path v1.33.0, trace diffs, trace stats)
+- https://github.com/NetManAIOps/TraceAnomaly — TraceAnomaly research code (ISSRE 2020; last commit 2020-12-02; no license)
+- https://raw.githubusercontent.com/NetManAIOps/TraceAnomaly/master/README.md — TraceAnomaly README (Python 3.6)
+- https://github.com/NetManAIOps/TraceAnomaly/commits/master.atom — last commit date
+- https://github.com/NetManAIOps/TraceVAE — TraceVAE research code (WWW 2023; last commit 2023-05-02; no license)
+- https://raw.githubusercontent.com/NetManAIOps/TraceVAE/master/README.md — TraceVAE README
+- https://github.com/NetManAIOps/TraceVAE/commits/main.atom — last commit date
+- https://dl.acm.org/doi/fullHtml/10.1145/3543507.3583215 — TraceVAE paper (search result, not fetched)
+- https://github.com/uber-research/CRISP — CRISP critical-path analysis for Jaeger traces (Apache-2.0)
+- https://raw.githubusercontent.com/uber-research/CRISP/master/README.md — CRISP README/CLI
+- https://raw.githubusercontent.com/uber-research/CRISP/main/LICENSE — Apache-2.0
+- https://github.com/uber-research/CRISP/commits/main.atom — last commit 2026-07-31
+- https://github.com/uber-research/CRISP/releases/latest — no releases (redirect to /releases)
+- https://github.com/IntelligentDDS/Nezha — exists (multi-modal RCA research), not used
+- https://github.com/FudanSELab/train-ticket — Train-Ticket benchmark repo exists
+- https://github.com/NetManAIOps/Eadro — 404
+- https://github.com/PrincetonUniversity/Sage — 404
+- https://github.com/LoyiLY/MicroRank — 404
+- https://arxiv.org/abs/2607.10156 — ChainLSTM trace AD paper (2026-07-11)
+- https://arxiv.org/pdf/2105.12378 — Soldani & Brogi survey (search result)
+- https://arxiv.org/pdf/2407.01710 — failure diagnosis survey (search result)
+- https://www.usenix.org/conference/atc22/presentation/zhang-zhizhou — CRISP paper (from README, not fetched)
+- https://www.jaegertracing.io/docs/1.76/spm/ — Jaeger v1.76 SPM doc (METRICS_STORAGE_TYPE, PROMETHEUS_SERVER_URL, normalize env vars)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/metricstore/prometheus/metricstore/reader.go — Jaeger PromQL (hard-coded status_code="STATUS_CODE_ERROR", ms/s unit mapping)
+- https://raw.githubusercontent.com/jaegertracing/documentation/main/content/docs/v1/1.76/spm.md — 404 (v1 docs path probe)
+
+### Correlation, RCA, LLM cost, commercial baselines (docs/research/04)
+
+- https://api.github.com/repos/prometheus/alertmanager — repo meta: Apache-2.0, not archived, latest v0.34.0 (2026-08-16)
+- https://api.github.com/repos/keephq/keep — repo meta: not archived, 12.3k stars, latest v0.54.3 (2026-09-09)
+- https://api.github.com/repos/grafana/oncall — redirects to grafana-cold-storage/oncall: archived=true, AGPL-3.0, last release v1.16.11 (2026-02-11)
+- https://github.com/grafana-cold-storage/oncall — README: maintenance mode 2025-03-11, archived 2026-03-24; points to Grafana Cloud IRM
+- https://grafana.com/docs/oncall/latest/set-up/open-source/ — Grafana maintenance mode notice for OnCall OSS (search result)
+- https://grafana.com/blog/grafana-oncall-maintenance-mode/ — Grafana blog Q&A on OnCall OSS maintenance mode (search result)
+- https://api.github.com/repos/HolmesGPT/holmesgpt — repo meta: Apache-2.0, "CNCF Sandbox Project", latest 0.41.0 (2026-09-08); robusta-dev/holmesgpt redirects here
+- https://api.github.com/repos/k8sgpt-ai/k8sgpt — repo meta: Apache-2.0, latest v0.4.39 (2026-09-14)
+- https://api.github.com/repos/coroot/coroot — repo meta: Apache-2.0, latest v1.26.0 (2026-09-07)
+- https://api.github.com/repos/robusta-dev/robusta — repo meta: MIT, latest 0.49.0 (2026-09-08)
+- https://api.github.com/repos/SigNoz/signoz — repo meta: license NOASSERTION (mixed), latest v0.141.1 (2026-09-09)
+- https://api.github.com/repos/openobserve/openobserve — repo meta: AGPL-3.0, latest v1.0.0 (2026-09-11)
+- https://raw.githubusercontent.com/keephq/keep/main/LICENSE — MIT except ee/ directory
+- https://raw.githubusercontent.com/keephq/keep/main/ee/LICENSE — Keep Enterprise License (production use needs subscription); ee/ contains only identitymanager
+- https://github.com/keephq/keep — README: dedup/enrichment/correlation, AI backends, 80+ integrations, "Enterprise Ready" SSO/RBAC
+- https://ir.elastic.co/news/news-details/2025/Elastic-Completes-Acquisition-of-Keep/default.aspx — Elastic completed acquisition of Keep (2025) (search result)
+- https://www.elastic.co/blog/elastic-and-keep-join-forces — Elastic blog: Keep joins Elastic, stays open source (search result)
+- https://docs.keephq.dev/llms.txt — Keep docs index
+- https://docs.keephq.dev/overview/ai-correlation.md — AI Correlation: Cloud+Enterprise only, OSS ⛔; proprietary Keep-hosted model
+- https://docs.keephq.dev/overview/ai-incident-assistant.md — AI incident assistant: OSS experimental
+- https://docs.keephq.dev/overview/ai-semi-automatic-correlation.md — AI semi-auto correlation: OSS experimental, <100 alerts/day
+- https://docs.keephq.dev/overview/ai-in-workflows.md — AI in workflows: OSS ✅, BYO LLM (OpenAI, Anthropic, Gemini, Ollama, vLLM, llama.cpp...)
+- https://docs.keephq.dev/overview/correlation-rules.md — manual correlation rules (conditions on alert attributes, incident naming templates)
+- https://docs.keephq.dev/overview/correlation-topology.md — topology correlation (KEEP_TOPOLOGY_PROCESSOR=true)
+- https://docs.keephq.dev/overview/deduplication.md — partial/full dedup, fingerprint fields
+- https://docs.keephq.dev/overview/maintenance-windows.md — CEL-based maintenance windows
+- https://docs.keephq.dev/deployment/authentication/overview.md — auth matrix: Keycloak/Auth0/AzureAD = EE; DB/OAuth2Proxy/Okta/OneLogin = OSS
+- https://docs.keephq.dev/deployment/stress-testing.md — sizing tiers; >1M alerts needs Elasticsearch + Redis/ARQ
+- https://docs.keephq.dev/deployment/local-llm/keep-with-litellm.md — run Keep with local LLM via LiteLLM (OPENAI_BASE_URL)
+- https://raw.githubusercontent.com/HolmesGPT/holmesgpt/master/README.md — HolmesGPT README: CNCF sandbox, originally Robusta, agentic loop, Alertmanager integration, Apache-2.0, operator mode
+- https://holmesgpt.dev/latest/data-sources/builtin-toolsets/ — built-in toolsets list: Prometheus, Grafana, Loki, Tempo, Elasticsearch/OpenSearch, no Jaeger
+- https://holmesgpt.dev/latest/ai-providers/ — providers: Anthropic, Bedrock, Azure, Gemini, Vertex, Ollama, OpenAI, OpenAI-compatible (LiteLLM), OpenRouter
+- https://holmesgpt.dev/latest/ai-providers/ollama/ — Ollama support "experimental", tool calling limited/inconsistent
+- https://holmesgpt.dev/latest/ai-providers/openai-compatible/ — any OpenAI-compatible endpoint (vLLM etc.), function calling required
+- https://holmesgpt.dev/latest/data-sources/builtin-toolsets/elasticsearch/ — elasticsearch/data + elasticsearch/cluster toolsets
+- https://holmesgpt.dev/latest/data-sources/builtin-toolsets/prometheus/ — prometheus/metrics toolset config
+- https://holmesgpt.dev/latest/development/evaluations/ — 150+ evals; weekly benchmark
+- https://holmesgpt.dev/latest/development/evaluations/model-comparison-summary-20260315/ — model ranking; price tiers cheap <=$0.06/run, avg $0.07-0.15, expensive >=$0.16
+- https://holmesgpt.dev/latest/development/evaluations/history/results_20260315_041151/ — per-model avg cost/run: haiku-4.5 $0.06, sonnet-4.6 $0.18, opus-4.6 $0.32, gpt-5.4 $0.13, gemini-3.1-pro $0.12, deepseek-v3.2 $0.02, qwen-next-80B $0.04
+- https://holmesgpt.dev/latest/development/evaluations/history/custom_self_hosted_results_20251008_053744/ — self-hosted models benchmark: llama-4-maverick 0%, glm-4.6 2%, deepseek-v3.1 84%; gpt-4.1 avg $0.13, sonnet-4 $0.19
+- https://raw.githubusercontent.com/k8sgpt-ai/k8sgpt/main/README.md — k8sgpt README: K8s analyzers (pod/pvc/rs/service/...), backends incl. localai/ollama/litellm/customrest, operator mode
+- https://coroot.com/pricing/ — Coroot pricing: Community free; Standard $1/monitored CPU core/month; Premium quote
+- https://docs.coroot.com/ — Coroot docs home: requires Prometheus (remote write receiver) + ClickHouse
+- https://docs.coroot.com/ai/overview — AI RCA = Enterprise ($1/core/mo) or CE via Coroot Cloud (10 free investigations/month); ML finds causes, LLM only summarizes findings
+- https://docs.coroot.com/quick-start/enterprise — Coroot EE install (license key, ClickHouse shards/replicas)
+- https://docs.coroot.com/installation/ — requirement: Linux kernel >= 5.1 (eBPF)
+- https://docs.coroot.com/configuration/prometheus/ — Coroot uses Prometheus (or ClickHouse) for metrics; own on-disk metric cache
+- https://raw.githubusercontent.com/coroot/coroot/main/README.md — Coroot README: Apache-2.0, ClickHouse-based logs search
+- https://coroot.com/enterprise/ — Coroot Enterprise: AI RCA, SSO, RBAC, support; from $1/core/mo
+- https://home.robusta.dev/pricing — Robusta pricing: contact form, quote-only
+- https://docs.robusta.dev/master/index.html — Robusta docs: SaaS / self-hosted / open source; K8s-focused
+- https://raw.githubusercontent.com/robusta-dev/robusta/master/README.md — "Robusta Classic" rule-based Prometheus alert enrichment for Kubernetes; smart grouping, enrichment, self-healing
+- https://signoz.io/docs/alerts-management/anomaly-based-alerts/ — SigNoz anomaly alerts: tags "SigNoz Cloud, Self-Hosted Enterprise"; seasonal z-score; metrics query builder only
+- https://signoz.io/pricing/ — SigNoz: Teams $49/mo incl usage, logs/traces $0.30/GB, metrics $0.10/M samples; Enterprise from $4000/mo; anomaly detection not in Community
+- https://openobserve.ai/docs/user-guide/analytics/alerts/anomaly-detection/ — OpenObserve anomaly detection: Enterprise (self-hosted), RCF on logs/metrics/traces streams
+- https://openobserve.ai/pricing/ — OpenObserve: OSS AGPL; Self-hosted Enterprise free up to 50 GB/day; Cloud $0.50/GB ingest, $0.01/GB queried
+- https://openobserve.ai/docs/enterprise-setup/enterprise-features/ — OpenObserve EE features: SSO, AI SRE agent, log patterns, L/M/T correlation
+- https://prometheus.io/docs/alerting/latest/alertmanager/ — Alertmanager concepts: grouping, inhibition, silences, HA clustering
+- https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/logs-invoice/ — logs billing: Process + Write on every GB; Retain $0.10/GB per extra 30 days; queried >100x fair use $0.003/GB
+- https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/metrics-invoice/ — billable series = max(active series, total DPM / included DPM); 1 DPM included; 15s scrape = 4 DPM
+- https://grafana.com/docs/grafana-cloud/machine-learning/billing/ — Grafana ML (forecast, outlier, Sift) free all Cloud tiers; limits 10 forecasts x100 series, 10 outlier detectors x1000 series
+- https://www.datadoghq.com/pricing/list/ — Datadog list: logs ingest $0.10/GB; index per 1M events 3d $1.06 / 7d $1.27 / 15d $1.70 / 30d $2.50 (annual); Flex $0.05/M; Infra Pro $15 / Ent $23 per host (annual); custom metrics $5 per 100; APM $31/host
+- https://docs.datadoghq.com/account_management/billing/custom_metrics/ — custom metric = metric name + tag values; Pro 100 / Ent 200 per host allotment; histograms = 5 metrics
+- https://docs.datadoghq.com/watchdog/ — "All Watchdog features come built-in"
+- https://docs.datadoghq.com/watchdog/alerts/ — Watchdog covers APM, logs (analyzed at intake on ingested logs), infrastructure
+- https://www.elastic.co/pricing/self-managed — self-managed Free / Platinum* (*existing customers only) / Enterprise; both paid tiers "Contact us"; ML anomaly detection + log categorization = Platinum+
+- https://www.elastic.co/pricing/serverless-observability — Serverless Obs: Logs Essentials ingest as low as $0.07/GB, retain $0.017; Complete $0.09/GB logs, $0.023/GB metrics, retain $0.019/$0.005; ML in Complete; Elastic Managed LLM $4.50/$21 per M tokens
+- https://cloud.elastic.co/pricing/serverless — JS-rendered, no tier table retrieved
+- https://www.elastic.co/docs/deploy-manage/cloud-organization/billing/elastic-observability-billing-dimensions — serverless billing dims: ingest GB, retention GB; TSDS metrics at 25% of per-GB rates
+- https://www.elastic.co/blog/elastic-cloud-serverless-pricing-packaging — blog 2025-11-01: volume-tiered "as low as" prices; Complete includes ML/AIOps + AI Assistant
+- https://claude.com/pricing — (anthropic.com/pricing 301s here) Haiku 4.5 $1/$5, Sonnet 5 $2/$10, Opus 5 $5/$25 per MTok; cache read 0.1x; batch -50%
+- https://openai.com/api/pricing/ — 403 to fetcher
+- https://developers.openai.com/api/docs/pricing — OpenAI: gpt-5.6-luna $0.20 in / $0.02 cached / $1.20 out; gpt-5.6-terra $2/$12; batch -50%
+- https://ai.google.dev/gemini-api/docs/pricing — Gemini paid: 2.5 Flash-Lite $0.10/$0.40; 3.1 Flash-Lite $0.25/$1.50; 3.8 Flash $0.75/$3.75 until 2026-12-31 then $1.50/$7.50; 3.5 Flash $1.50/$9; batch -50%
+- https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(N.%20Virginia)/Linux/index.json — AWS on-demand Linux us-east-1 (published 2026-09-10): g6.xlarge $0.8048/h, g5.xlarge $1.006/h, g6e.xlarge $1.861/h, g4dn.xlarge $0.526/h, c7i.4xlarge $0.714/h
+- https://www.nvidia.com/en-us/data-center/l4/ — L4: 24 GB, 300 GB/s, FP16 242 TFLOPS (sparse), FP8 485, 72 W
+- https://www.truefoundry.com/blog/vllm-benchmark — 2026-07-28: vLLM on single A10 FP16, Qwen3-8B 851 tok/s @64 concurrent (short prompts)
+- https://techcommunity.microsoft.com/blog/azurehighperformancecomputingblog/inference-performance-of-llama-3-1-8b-using-vllm-across-various-gpus-and-cpus/4448420 — Llama 3.1 8B vLLM across GPUs/CPUs; body not retrievable by fetcher
+- https://raw.githubusercontent.com/SigNoz/signoz/main/LICENSE — SigNoz: MIT Expat except ee/ and cmd/enterprise/ (ee/LICENSE)
+- https://discuss.elastic.co/t/alerts-webhook-with-basic-license-elk-8-12/353216/3 — forum: Basic license webhook workaround = index connector + poller (ElastAlert2/Grafana)
+- https://github.com/jertel/elastalert2/releases/latest — ElastAlert2 latest elastalert2-2.31.0 (2026-07-22), Apache-2.0
+- https://docs.keephq.dev/providers/documentation/kibana-provider.md — Keep Kibana provider (alerts via webhooks)
+- https://grafana.com/docs/grafana/latest/alerting/set-up/configure-alertmanager/ — Grafana alerting → external Alertmanager (data source + forwarding, or contact point) (search result)
+
+### Method evidence and benchmarks (docs/research/05)
+
+- https://github.com/TheDatumOrg/TSB-AD — TSB-AD repo: 1070 series/40 datasets, 40 algos, Apache-2.0, news (leaderboard community submissions Apr 2026)
+- https://thedatumorg.github.io/TSB-AD/ — TSB-AD project page/leaderboard (JS-rendered; "last updated July 1, 2026")
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/benchmark_exp/benchmark_eval_results/uni_mergedTable_VUS-PR.csv — per-series VUS-PR, TSB-AD-U eval (350 series), 32 methods
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/benchmark_exp/benchmark_eval_results/multi_mergedTable_VUS-PR.csv — per-series VUS-PR, TSB-AD-M eval (180 series)
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/docs/static/leaderboard/TSB-AD-U.html — TSB-AD-U leaderboard table incl. PA-F1 vs VUS-PR per method
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/docs/static/leaderboard/TSB-AD-updated.html — updated leaderboard incl. community submissions (Time-RCD, TSPulse, CHARM, StreamVAE, xLSTMAD, MMPAD)
+- https://github.com/TheDatumOrg/TSB-AD/tree/main/benchmark_exp/leaderboard_results — per-series CSVs of community submissions
+- https://openreview.net/forum?id=R6kJtWsTGy — TSB-AD NeurIPS 2024 D&B OpenReview page
+- https://proceedings.neurips.cc/paper_files/paper/2024/hash/c3f3c690b7a99fba16d0efd35cb83b2c-Abstract-Datasets_and_Benchmarks_Track.html — TSB-AD NeurIPS 2024 abstract (Liu & Paparrizos): simple/statistical often beat DL; FMs good on point anomalies
+- https://arxiv.org/abs/2009.13807 — Wu & Keogh, "Current TSAD Benchmarks are Flawed..." abstract (UCR archive)
+- https://arxiv.org/pdf/2009.13807 — Wu & Keogh full text: four flaws (triviality, unrealistic density, mislabeled GT, run-to-failure bias); 316/367 Yahoo series solvable by one-liner
+- https://arxiv.org/abs/2109.05257 — Kim et al., "Towards a Rigorous Evaluation of TSAD": point-adjust lets random scores look SOTA
+- https://arxiv.org/abs/2606.02670 — Pinet et al. (Jun 2026) "Anomalies in MTS Benchmarks Are Mostly Univariate": channel-dependent models no measurable gain
+- https://github.com/thedatumorg/TSB-AutoAD — TSB-AutoAD (PVLDB 18(11) 2025): >half of automated selection/ensembling ≈ random choice; FMs "have yet to deliver"
+- https://github.com/TheDatumOrg/TSB-UAD — TSB-UAD (PVLDB 15, 2022): 12,686 series, 13 methods, no single best method
+- https://arxiv.org/abs/2506.21550 — mTSBench (TMLR 2026): 344 MTS/19 datasets/24 detectors; no single detector dominates; selectors far from optimal
+- https://arxiv.org/html/2506.18046v1 — TAB (PVLDB 2025): univariate — KMeans/DWT/S2G/OCSVM best; LLM methods weak + heavy; non-learning fastest
+- https://github.com/decisionintelligence/TAB — TAB benchmark repo
+- https://github.com/amazon-science/chronos-forecasting — Chronos repo: Apache-2.0; Chronos-2 (120M, Oct 2025), Bolt (9–205M) "up to 250x faster"; no native AD
+- https://github.com/google-research/timesfm — TimesFM repo: 2.5 (Sep 2025, 200M, Apache weights), 3.0 (Aug 2026, 330M, non-commercial weights); M4 Max throughput 90–666 series/s
+- https://huggingface.co/api/models/google/timesfm-3.0-pytorch — HF API: license "other", 330.7M params
+- https://huggingface.co/api/models/google/timesfm-2.5-200m-pytorch — HF API: apache-2.0, 231M params
+- https://huggingface.co/api/models/amazon/chronos-2 — HF API: apache-2.0, 119.5M params
+- https://huggingface.co/api/models/amazon/chronos-bolt-small — HF API: apache-2.0, 47.7M params
+- https://huggingface.co/api/models/Datadog/Toto-Open-Base-1.0 — HF API: apache-2.0, 151M params
+- https://huggingface.co/api/models?author=Datadog — HF listing: Toto 2.0 family 4m/22m/313m/1B/2.5B (Apr 2026), all apache-2.0
+- https://huggingface.co/api/models/Salesforce/moirai-2.0-R-small — HF API: cc-by-nc-4.0, 11.4M params
+- https://huggingface.co/api/models?author=Salesforce&search=moirai — HF listing: Moirai 1.0/1.1/MoE/2.0 checkpoints (all cc-by-nc-4.0 where checked)
+- https://huggingface.co/api/models/AutonLab/MOMENT-1-large — HF API: MIT, 346M params (small 38M, base 113M)
+- https://huggingface.co/api/models/time-series-foundation-models/Lag-Llama — HF API: apache-2.0, 2.45M params
+- https://huggingface.co/api/models/ibm-granite/granite-timeseries-tspulse-r1 — HF API: apache-2.0, 1.08M params (TSPulse)
+- https://huggingface.co/Datadog/Toto-2.0-22m — Toto 2.0 22m card: BOOM CRPS 0.363 / MASE 0.601; ~5 ms / 1024-step forecast @batch 8 on A100; Apache-2.0
+- https://arxiv.org/abs/2605.20119 — Toto 2.0 tech report (May 2026): 4M–2.5B, SOTA claims on BOOM/GIFT-Eval/TIME
+- https://github.com/DataDog/toto — Toto repo: 1.0 trained on ~1T points (Datadog observability + public + synthetic); Apache-2.0
+- https://arxiv.org/abs/2505.14766 — Toto 1.0 / BOOM paper ("This Time is Different", NeurIPS 2025)
+- https://arxiv.org/pdf/2505.14766 — Toto 1.0 full text: BOOM Table 2 (Toto MASE 0.617 vs Moirai 0.710, TimesFM2.0 0.725, ChronosBolt 0.726, AutoARIMA 0.824)
+- https://huggingface.co/datasets/Datadog/BOOM — BOOM dataset card: ~350M points, 2,807 series, 32,887 variates, Datadog pre-prod telemetry
+- https://www.datadoghq.com/blog/ai/toto-2/ — Datadog Toto 2.0 blog (May 14 2026): BOOM CRPS ranks (Toto2 2.5B 3.88 … Chronos-2 7.39); latency vs Chronos-2
+- https://www.datadoghq.com/blog/ai/toto-boom-unleashed/ — Datadog Toto 1.0/BOOM blog (May 21 2025): use cases incl. anomaly detection
+- https://aws.amazon.com/blogs/machine-learning/fast-and-accurate-zero-shot-forecasting-with-chronos-bolt-and-autogluon/ — AWS blog: Chronos-Bolt sizes, 250x faster, runs on CPU (no CPU timings)
+- https://arxiv.org/abs/2605.24381 — "Assessing the Operational Viability of FMs for TS Forecasting" (May 2026): FMs good for cold-start/periodic; complexity router
+- https://raw.githubusercontent.com/google-research/timesfm/master/README.md — TimesFM README: 3.0 weights non-commercial; 2.5 Apache; MLX M4 Max 90/406/666 series/s at batch 1/8/32
+- https://github.com/moment-timeseries-foundation-model/moment — MOMENT repo: MIT, native AD via reconstruction, ICML 2024
+- https://www.nixtla.io/docs/capabilities-anomaly-detection-anomaly_detection — TimeGPT AD = forecast/reconstruction + 99% interval; cloud API via NixtlaClient
+- https://www.nixtla.io/docs/introduction/timegpt_subscription_plans — TimeGPT plans: 30-day trial, enterprise custom pricing (none public), self-hosted option
+- https://github.com/SalesforceAIResearch/uni2ts — uni2ts/Moirai repo: code Apache-2.0; Moirai 1.0/1.1/MoE/2.0 timeline
+- https://arxiv.org/abs/2502.12944 — Toner et al. (Huawei, ICLR'25 ICBINB workshop): zero-shot FMs fail on cloud data
+- https://arxiv.org/pdf/2502.12944 — full text: seasonal-naive beats all FMs on Huawei Cloud data; MASE ~half of TimesFM
+- https://arxiv.org/abs/2607.12454 — Uray et al. (Jul 2026): TimesFM residuals low inside persistent anomalies; unsuitable for MTSAD
+- https://huggingface.co/ibm-granite/granite-timeseries-tspulse-r1 — TSPulse card: 1.08M params, AD/classification/imputation, GPU-free inference, Apache-2.0
+- https://arxiv.org/abs/2509.21190 — Time-RCD paper (AD foundation model) — withdrawn by authors
+- https://auto.gluon.ai/1.2.0/tutorials/timeseries/forecasting-chronos.html — AutoGluon Chronos tutorial: Bolt runs on CPU ("longer runtime"); original Chronos small+ needs GPU
+- https://github.com/logpai/loghub-2.0 — Loghub-2.0 repo (ISSTA'24): 14 datasets, avg 3.6M lines, 16 parsers, needs 16 GB RAM/GPU for semantic parsers
+- https://github.com/logpai/loghub — Loghub (ISSRE'23): 19 datasets, ~83 GiB in the README table (re-counted 2026-09-15; the old note said 24 datasets / 450+ GiB, wrong); labelled: HDFS, BGL, Thunderbird, Hadoop, OpenStack
+- https://arxiv.org/pdf/2308.10828 — Loghub-2.0 full text: 9/15 parsers can't finish in 12 h; Drain best GA/FGA; semantic parsers need GPU
+- https://arxiv.org/abs/2406.06156 — LogBatcher ("Stronger, Cheaper and Demonstration-Free Log Parsing with LLMs", ASE'24)
+- https://arxiv.org/html/2406.06156v1 — LogBatcher html (tables)
+- https://arxiv.org/pdf/2406.06156v1 — LogBatcher full text: Table 5 tokens on Loghub-2.0 (HDFS 11.2M logs → 11,646 tokens); $6,050 per 100M logs if per-line LLM
+- https://github.com/LogIntelligence/LogBatcher — LogBatcher repo
+- https://arxiv.org/abs/2202.04301 — Le & Zhang ICSE'22 "Log-based AD with DL: How Far Are We?" — models don't always work; not solved
+- https://conf.researchr.org/details/icse-2024/icse-2024-research-track/21/Deep-Learning-or-Classical-Machine-Learning-An-Empirical-Study-on-Log-Based-Anomaly- — Yu et al. ICSE'24: KNN 1000x faster than NeuralLog, +0.0625 F1 on Thunderbird
+- https://arxiv.org/abs/2312.01934 — Nyyssölä & Mäntylä: parserless OOV/trigram & IForest on events, AUC-ROC ~0.83–0.85; fast
+- https://arxiv.org/abs/2309.02854 — Landauer et al. (FSE'24): anomalies in HDFS/BGL/etc. mostly not sequential; simple new-event/length/count detectors suffice
+- https://arxiv.org/abs/2604.12218 — Patel (Apr 2026) LLM log AD benchmark: fine-tuned transformers F1 0.96–0.99, zero-shot prompt LLMs 0.82–0.91
+- https://arxiv.org/abs/2604.16359 — LLM4Log systematic review (Ma, Yang, Chen; 145 papers; rev. Sep 2026): context/latency/cost/privacy/hallucination challenges
+- https://arxiv.org/abs/2305.15897 — Khan et al. EMSE'24: parsing accuracy not correlated with AD accuracy; distinguishability matters
+- https://arxiv.org/html/2307.16714v5 — Comprehensive study of ML for log AD (EMSE 2025): supervised traditional ≈ DL; RF strong; semi-supervised much worse
+- https://arxiv.org/abs/2307.16714 — Ali et al. EMSE 30:129 (2025) authors/venue confirmation
+- https://github.com/aws/random-cut-forest-by-aws — AWS RCF (Java/Rust, Apache-2.0; latest release 4.4.0-java); ThresholdedRCF, RCFCaster
+- https://github.com/opensearch-project/anomaly-detection — OpenSearch AD plugin (latest release 3.6.0.0)
+- https://github.com/logpai/Drain3 — Drain3 streaming log template miner (latest release v0.9.11)
+- https://github.com/asiffer/libspot — libspot (SPOT, C99; latest v3.1.0)
+- https://raw.githubusercontent.com/asiffer/libspot/master/README.md — libspot README: Python + JS (wasm) bindings
+- https://asiffer.github.io/libspot — libspot docs: SPOT = EVT peaks-over-threshold (GPD), automatic thresholds, low footprint
+- https://riverml.xyz/latest/api/anomaly/HalfSpaceTrees/ — river HST: features in [0,1], window_size 250, poor on clustered anomalies
+- https://riverml.xyz/latest/api/anomaly/QuantileFilter/ — river QuantileFilter (streaming quantile threshold)
+- https://prometheus.io/docs/prometheus/latest/querying/functions/ — PromQL: double_exponential_smoothing (ex-holt_winters, no seasonality, experimental), mad_over_time experimental, stddev/quantile_over_time GA
+- https://grafana.com/blog/how-to-use-prometheus-to-efficiently-detect-anomalies-at-scale/ — Grafana (Oct 2024) promql-anomaly-detection: recording-rule bands, 26h stddev, 23h30m seasonal offset, CV filter for FP
+- https://stumpy.readthedocs.io/en/latest/Tutorial_STUMPY_Basics.html — stumpy discords = max of matrix profile; gpu_stump, stumped (Dask)
+- https://stumpy.readthedocs.io/en/latest/api.html — stumpy API incl. stumpi (incremental), BSD-3
+- https://www.cs.ucr.edu/~eamonn/DAMP_long_version.pdf — DAMP (KDD'22) exact left-discords on streams up to 300 kHz on desktop
+- https://www.statsmodels.org/stable/generated/statsmodels.tsa.seasonal.MSTL.html — statsmodels MSTL (since 0.14), multiple seasonal periods
+- https://www.statsmodels.org/stable/generated/statsmodels.tsa.holtwinters.ExponentialSmoothing.html — statsmodels Holt-Winters
+- https://arxiv.org/abs/2107.13462 — MSTL paper (Bandara, Hyndman, Bergmeir)
+- https://proceedings.mlr.press/v48/guha16.html — RCF paper (Guha et al., ICML 2016)
+- https://www.ijcai.org/Proceedings/11/Papers/254.pdf — Half-Space Trees (Tan, Ting, Liu, IJCAI 2011)
+- https://www.cs.ucr.edu/~eamonn/PID4481997_extend_Matrix%20Profile_I.pdf — Matrix Profile I (Yeh et al., ICDM 2016)
+- https://sre.google/workbook/alerting-on-slos/ — Google SRE workbook: precision/recall/detection/reset time; multiwindow multi-burn-rate (14.4@1h/5m, 6@6h/30m, 1@3d/6h)
+- https://www.etsy.com/codeascraft/introducing-kale — Etsy Kale/Skyline intro (Jun 2013): >250k metrics, "err on the side of noise" (read via browser pane; WebFetch 403)
+- https://www.etsy.com/uk/codeascraft/introducing-kale — same post, UK mirror (WebFetch 403)
+- https://github.com/etsy/skyline — etsy/skyline archived by owner Dec 18, 2019
+- http://www.andrewclegg.org/tech/KaleTalk.html — Andrew Clegg Kale talk abstract (2015): >1M metrics, literature methods ineffective on noisy data, Kale 2.0 changes
+- https://www.uber.com/blog/argos-real-time-alerts/ — Uber Argos (Nov 2015): tens of millions of metrics, hourly thresholds, 2-stage outlier→outage detector, "90% actionability"
+- https://arxiv.org/abs/2204.09670 — Yang et al. DSN'22: alert anti-patterns at Huawei Cloud (millions of alerts / 2 yrs)
+- https://netman.aiops.org/wp-content/uploads/2020/07/SEIP20_pre.pdf — Zhao et al. ICSE-SEIP'20 alert storm (bank): ~weekly storms, ~1 h of several engineers each (from search snippet; PDF not read)
+- https://netflixtechblog.com/telltale-netflix-application-monitoring-simplified-5c08bfa780ba — Netflix Telltale (Aug 2020): >100 apps, health model mixing statistical/rule/ML, single notification, feedback (browser pane; WebFetch 403)
+- https://www.linkedin.com/blog/engineering/analytics/smart-alerts-in-thirdeye-linkedins-real-time-monitoring-platfor — LinkedIn ThirdEye Smart Alerts (Jun 2019): merger, duration/percentage/site-wide-impact filters, suppression
+- https://github.com/slok/sloth — Sloth SLO → Prometheus multiwindow burn-rate rule generator (latest v0.16.0)
+- https://github.com/pyrra-dev/pyrra — Pyrra SLO tool (latest v0.10.1)
+- https://github.com/grafana/promql-anomaly-detection — Grafana PromQL anomaly-detection recording rules (Apache-2.0, latest v0.2.1)
+- https://dl.acm.org/doi/10.1145/3097983.3098144 — SPOT/DSPOT paper DOI (Siffer et al., KDD 2017); 403 to curl (Cloudflare), cited as reference only
+- https://api.github.com/repos/TheDatumOrg/TSB-AD/git/trees/main?recursive=1 — TSB-AD repo tree: leaderboard_results CSVs, TimeRCD_MAFT compiled .so
+- https://export.arxiv.org/abs/2107.13462 — arXiv export check of MSTL paper title
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/benchmark_exp/leaderboard_results/ — per-method CSVs fetched (Uni/Multi × AxonAD, CHARM, MMPAD, StreamVAE, TSPulse, Time_RCD, TimeRCD_MAFT, xLSTMAD) to recompute VUS-PR means
+- https://huggingface.co/api/models/<id — HF API also queried for Toto-2.0-{4m,22m,313m,1B,2.5B}, moirai-1.1-R-{small,large}, MOMENT-1-{small,base}, chronos-bolt-tiny, chronos-2-small (license + param counts)
+- https://export.arxiv.org/api/query?id_list=2502.12944,2607.12454,2505.13033 — arXiv API query (returned empty; not used)
+- https://arxiv.org/abs/2412.xxxx — mistaken placeholder fetch (404; not used)
+- https://pypi.org/pypi/<pkg>/json — PyPI JSON queried for: statsmodels 0.15.0, river 0.26.1, stumpy 1.14.1, rrcf 0.4.4, streamad 0.3.1, pyod 3.6.5, salesforce-merlion 2.0.4, drain3 0.9.11, scikit-learn 1.9.1, pysad 0.5.0, adtk 0.6.2, prophet 1.4.0, libspot 3.1.0, pylibspot 1.1.3, statsforecast 2.1.1, orion-ml 0.7.1, tsb-ad 1.5, chronos-forecasting 2.3.2, timesfm 3.0.2
+- https://github.com/<owner>/<repo>/releases/latest — HEAD redirects checked for random-cut-forest-by-aws, opensearch anomaly-detection, Drain3, libspot, river, stumpy, rrcf, sloth, pyrra, promql-anomaly-detection
+
+### PoC build and validation (main session)
+
+- https://pypi.org/pypi/requests/json — requests 2.34.2 (PoC pin)
+- https://pypi.org/pypi/pyyaml/json — PyYAML 6.0.3 (PoC pin)
+- https://pypi.org/pypi/numpy/json — numpy 2.5.3 needs Python >= 3.12 (why the scorer stays stdlib-only)
+- https://github.com/prometheus/prometheus/releases/latest — redirect to v3.14.0 (promtool image tag)
+- https://github.com/open-telemetry/opentelemetry-collector-contrib/releases/latest — redirect to v0.160.0 (otelcol-contrib image tag)
+- https://github.com/jaegertracing/jaeger/releases/latest — redirect to v2.20.0
+- https://github.com/grafana/grafana/releases/latest — redirect to v13.2.1
+- https://github.com/prometheus/alertmanager/releases/latest — redirect to v0.34.0 (amtool image tag)
+- https://github.com/grafana/promql-anomaly-detection/archive/refs/tags/v0.2.1.tar.gz — upstream adaptive/robust rule files used in promtool e2e test
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/countconnector/README.md — count connector custom log counts by attributes
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/countconnector/counter.go — confirms count connector emits DELTA monotonic sums (needs delta_to_cumulative)
+
+### Re-verification: logs / Elastic (docs/research/01)
+
+- https://github.com/elastic/kibana/releases/latest — redirects to v9.5.3
+- https://github.com/elastic/elasticsearch/releases/latest — redirects to v9.5.3
+- https://github.com/elastic/beats/releases/latest — redirects to v9.5.3
+- https://github.com/elastic/elasticsearch/releases.atom — 9.5.3 2026-09-03, 9.4.6 + 8.19.21 2026-09-01
+- https://hub.docker.com/v2/repositories/library/elasticsearch/tags?page_size=20&name=9.5 — Docker Hub tag 9.5.3 exists
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/cases-action-type — Cases connector page, no licence note
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/index-action-type — Index connector page
+- https://www.elastic.co/docs/reference/kibana/connectors-kibana/server-log-action-type — Server log connector page
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/cases/server/connectors/cases/index.ts — Cases connector minimumLicenseRequired 'platinum'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/es_index/index.ts — Index connector 'basic'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/server_log/index.ts — Server log 'basic'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/webhook/index.ts — webhook 'gold'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/email/index.ts — email 'gold'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/slack/index.ts — slack 'gold'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_connectors/server/connector_types/cases_webhook/index.ts — Cases webhook 'gold'
+- https://raw.githubusercontent.com/elastic/elasticsearch/v9.5.3/x-pack/plugin/ml/src/main/java/org/elasticsearch/xpack/ml/MachineLearning.java — CHANGE_POINT/CATEGORIZE_TEXT/FREQUENT_ITEM_SETS agg features = PLATINUM
+- https://raw.githubusercontent.com/elastic/elasticsearch/v8.15.5/LICENSE.txt — no AGPL
+- https://raw.githubusercontent.com/elastic/elasticsearch/v8.16.0/LICENSE.txt — AGPLv3 added; ELv2-only code in x-pack folder
+- https://raw.githubusercontent.com/elastic/elasticsearch/v9.5.3/LICENSE.txt — triple licence, x-pack ELv2 only
+- https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.10.2-linux-x86_64.tar.gz — HEAD 200 (7.11.0/7.11.1 oss = 404)
+- https://artifacts.elastic.co/downloads/kibana/kibana-oss-7.10.2-linux-x86_64.tar.gz — HEAD 200 (7.11.x = 404)
+- https://raw.githubusercontent.com/elastic/elasticsearch/v9.5.3/server/src/main/java/org/elasticsearch/Build.java — flavor hard-coded "default"
+- https://www.elastic.co/docs/reference/ingest-processor/set-processor — copy_from, ignore_empty_value semantics
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.10/set-processor.html — 200, no copy_from
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.11/set-processor.html — 200, copy_from present
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.9/set-processor.html — ignore_empty_value present
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.10/fingerprint-processor.html — 404
+- https://www.elastic.co/guide/en/elasticsearch/reference/7.10/gsub-processor.html — 200
+- https://raw.githubusercontent.com/elastic/elasticsearch/v7.10.2/modules/ingest-common/src/main/java/org/elasticsearch/ingest/common/SetProcessor.java — no copy_from (only ignore_empty_value)
+- https://raw.githubusercontent.com/elastic/elasticsearch/v7.11.0/modules/ingest-common/src/main/java/org/elasticsearch/ingest/common/SetProcessor.java — copy_from added
+- https://raw.githubusercontent.com/elastic/elasticsearch/v7.12.0/x-pack/plugin/ingest/src/main/java/org/elasticsearch/xpack/ingest/FingerprintProcessor.java — 200 (x-pack); 404 at v7.11.2
+- https://www.elastic.co/guide/en/beats/filebeat/7.10/copy-fields.html — 200
+- https://www.elastic.co/guide/en/beats/filebeat/7.10/replace-fields.html — 404 (doc gap only)
+- https://www.elastic.co/guide/en/beats/filebeat/7.10/processor-script.html — 200
+- https://raw.githubusercontent.com/elastic/beats/v7.10.2/libbeat/processors/actions/replace.go — RegisterPlugin("replace") present in 7.10.2, same config keys
+- https://raw.githubusercontent.com/elastic/beats/v7.7.1/libbeat/processors/actions/replace.go — 404
+- https://raw.githubusercontent.com/elastic/beats/v7.8.0/libbeat/processors/actions/replace.go — 200
+- https://raw.githubusercontent.com/elastic/beats/v7.10.2/CHANGELOG.asciidoc — release-notes-7.8.0: "Add `replace` processor for replacing string values of fields" (#17342)
+- https://raw.githubusercontent.com/elastic/beats/v7.10.2/libbeat/processors/actions/copy_fields.go — target exists → error
+- https://raw.githubusercontent.com/elastic/beats/v7.10.2/libbeat/processors/fingerprint/hash.go — xxhash present in 7.10.2
+- https://raw.githubusercontent.com/elastic/beats/v9.5.3/libbeat/processors/actions/replace.go — ReplaceAllString (global)
+- https://raw.githubusercontent.com/elastic/beats/v8.4.3/libbeat/processors/actions/replace.go — 200
+- https://raw.githubusercontent.com/elastic/beats/v8.5.0/libbeat/processors/actions/replace.go — 200
+- https://github.com/jertel/elastalert2/releases.atom — 2.31.0 2026-07-22, 2.30.0 2026-05-27, 2.29.0 2026-03-21
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/ruletypes.rst — rule options, realert per query_key, terms_size default 50
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/alerts.rst — alerter docs
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/configuration.rst — buffer_time ignored for count/terms, max_query_size + max_scrolling_count, disable_rules_on_error
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/recipes/faq.rst — ES8/ES9 upgrade notes, ES_VERSION, No plan, 1024 blacklist, download-all
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/running_elastalert.rst — Requirements: ES 7/8/9, OpenSearch 1/2/3; Python 3.14/3.13 (3.12 still supported)
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/README.md — Elasticsearch and OpenSearch
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/requirements.txt — elasticsearch==7.10.1
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/ruletypes.py — NewTermsRule baseline size 2147483647; SpikeMetricAggregationRule
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/elastalert.py — get_hits_aggregation terms_size default 50; set_starttime; --prometheus_port
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/alerters/alertmanager.py — alertmanager_* options, api_version default v1
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/schema.yaml — option schema
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/loaders.py — alerts_mapping (44 alerters)
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/config.py — defaults: max_query_size 10000, max_scrolling_count 990, alert_time_limit 2 d
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/util.py — add_keyword_postfix appends .keyword unconditionally
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/prometheus_wrapper.py — metric names
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/CHANGELOG.md — 2.31.0: ES|QL support (#1767)
+- https://raw.githubusercontent.com/jertel/elastalert2/master/CHANGELOG.md — head "2.TBD.TBD", no 2.32.0 section
+- https://github.com/jertel/elastalert2/commits/master.atom — last commit 2026-09-03
+- https://github.com/jertel/elastalert2/pull/1767 — "es|ql support", "Adds support for ES|QL queries."
+- https://github.com/jertel/elastalert2/pull/1767/files — files: esql.py, writing_filters.rst
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/docs/source/recipes/writing_filters.rst — ES|QL filter limitations (no aggregation/percentage rules, no scrolling, not OpenSearch)
+- https://raw.githubusercontent.com/jertel/elastalert2/2.31.0/elastalert/esql.py — esql filter handling
+- https://raw.githubusercontent.com/logpai/Drain3/master/LICENSE.txt — MIT, IBM 2020-2022
+- https://github.com/open-telemetry/opentelemetry-collector-contrib/releases.atom — v0.160.0 2026-09-02
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/drainprocessor/metadata.yaml — type drain, alpha logs, contrib+k8s
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/drainprocessor/README.md — options, converge quote
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/countconnector/metadata.yaml — alpha
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/receiver/filelogreceiver/metadata.yaml — type file_log, deprecated_type filelog, beta
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/solutions/observability/plugins/observability/server/lib/rules/custom_threshold/register_custom_threshold_rule_type.ts — 'basic'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/solutions/observability/plugins/infra/server/lib/alerting/log_threshold/register_log_threshold_rule_type.ts — 'basic'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_alerts/server/rule_types/es_query/rule_type.ts — 'basic'
+- https://raw.githubusercontent.com/elastic/kibana/v9.5.3/x-pack/platform/plugins/shared/stack_alerts/server/rule_types/index_threshold/rule_type.ts — 'basic'
+- https://github.com/getsentry/self-hosted/releases.atom — 26.8.0 2026-08-21
+- https://github.com/opensearch-project/OpenSearch/releases.atom — 3.8.0 2026-08-05
+- https://github.com/opensearch-project/anomaly-detection/releases.atom — 3.8.0.0 2026-07-31, 3.7.0.0 2026-05-29
+- https://github.com/opensearch-project/anomaly-detection/releases/tag/3.8.0.0 — 200
+- https://github.com/opensearch-project/anomaly-detection/releases/tag/3.7.0.0 — 200
+- https://raw.githubusercontent.com/elastic/beats/v9.5.3/libbeat/processors/fingerprint/fingerprint.go — hashes "|%v|%v" (field|value)
+- https://raw.githubusercontent.com/elastic/beats/v7.8.0/libbeat/processors/fingerprint/fingerprint.go — 200 (also 200 at v7.6.0, 404 at v7.5.2)
+- https://raw.githubusercontent.com/elastic/beats/v7.8.0/libbeat/processors/fingerprint/hash.go — xxhash present
+- https://raw.githubusercontent.com/elastic/beats/v7.5.2/libbeat/processors/actions/copy_fields.go — 200
+
+### Re-verification: metrics / Prometheus (docs/research/02)
+
+- https://github.com/grafana/promql-anomaly-detection/releases/latest — redirects to tag v0.2.1 (latest release)
+- https://github.com/grafana/promql-anomaly-detection/releases.atom — v0.2.1 2025-10-20, v0.2.0 2025-09-24, v0.1.1, v0.1.0
+- https://github.com/grafana/promql-anomaly-detection/tags.atom — same tags, none newer than v0.2.1
+- https://github.com/grafana/promql-anomaly-detection/commits/main.atom — last main commit 2026-05-08 (merge PR #64); PR #63 prediction_type fix 2026-05-08
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/v0.2.1/LICENSE — Apache License 2.0
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/v0.2.1/README.md — usage contract: anomaly_name, anomaly_strategy adaptive|robust, anomaly_type requests|latency|errors|resource; 24-26 h training
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/v0.2.1/rules/README.md — strategies must expose anomaly:upper_band/lower_band/level; anomaly_select avoids cycles
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/v0.2.1/rules/adaptive.yml — 4 constants + 9 derived + AnomalyDetected; LT term without prediction_type label
+- https://raw.githubusercontent.com/grafana/promql-anomaly-detection/v0.2.1/rules/robust.yml — 3 constants + 17 derived + AnomalyDetected
+- https://github.com/grafana/promql-anomaly-detection/pull/63 — PR claims LT band excluded from max without prediction_type label (not reproducible on promtool 3.14.0)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/rules/group.go — buildDependencyMap wildcard => indeterminate (no concurrency); namespace "prometheus" for rule_group_* metrics; per-rule error handling
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/rules/manager.go — rule manager (metric names check)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/rules/recording.go — limit exceeded returns error for the rule only
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.13.0/docs/command-line/prometheus.md — retention flag already [DEPRECATED] (also v3.12.0, v3.11.0, v3.10.0, v3.9.0, v3.8.0)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.8.0/docs/command-line/prometheus.md — first version marking --storage.tsdb.retention.time [DEPRECATED]
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.7.0/docs/command-line/prometheus.md — retention flag not deprecated (also v3.6.0, v3.5.0)
+- https://github.com/prometheus/alertmanager/releases.atom — 0.34.0 / 2026-08-16; 0.33.1 / 2026-07-04
+- https://raw.githubusercontent.com/prometheus/alertmanager/v0.34.0/docs/configuration.md — route (matchers, continue, group_by/wait/interval, repeat_interval), inhibit_rule (source_matchers/target_matchers/equal), webhook_config (max_alerts, send_resolved default true)
+- https://raw.githubusercontent.com/prometheus/alertmanager/v0.34.0/LICENSE — Apache License 2.0
+- https://github.com/slok/sloth/releases/latest — redirects to v0.16.0
+- https://github.com/slok/sloth/commits/main.atom — last commit 2026-05-26
+- https://raw.githubusercontent.com/slok/sloth/main/LICENSE — Apache License 2.0
+- https://raw.githubusercontent.com/slok/sloth/main/examples/getting-started.yml — SLO spec labels tier "2", page_alert severity pageteam
+- https://github.com/pyrra-dev/pyrra/releases/latest — redirects to v0.10.1
+- https://github.com/pyrra-dev/pyrra/commits/main.atom — last commit 2026-08-22
+- https://raw.githubusercontent.com/pyrra-dev/pyrra/main/LICENSE — Apache License 2.0
+- https://github.com/grafana/grafana/releases.atom — 13.2.1, 13.1.5, 13.0.8, 12.4.10 on 2026-09-02; 13.2.0 2026-08-19
+- https://grafana.com/docs/grafana-cloud/machine-learning/machine-learning/additional-configuration/limits/ — redirects to ai-tools/.../limits: 10 forecasts x 100 series; 10 outlier detectors x 1,000 series per hosted instance; raisable
+- https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/ — redirects to observe-and-act/...: "log optimization tool in Grafana Cloud"
+- https://grafana.com/docs/grafana/latest/introduction/grafana-enterprise/ — Enterprise feature list; no Machine Learning entry
+- https://grafana.com/api/plugins/grafana-metricsdrilldown-app — v2.5.1, 2026-08-24
+- https://grafana.com/api/plugins/grafana-lokiexplore-app — v2.5.2, 2026-08-26
+- https://grafana.com/api/plugins/sarika1731-smartanalytics-panel — v1.0.2, 2026-05-11, community, 5437 downloads
+- https://raw.githubusercontent.com/grafana/metrics-drilldown/main/LICENSE — AGPL v3
+- https://pypi.org/pypi/u8darts/json — 0.41.0, 2026-02-10 (old alias package)
+- https://pypi.org/pypi/PyYAML/json — 6.0.3, 2025-09-25, MIT
+- https://github.com/unit8co/darts/commits.atom — last commit 2026-09-07
+- https://github.com/netdata/netdata/releases/latest — v2.11.0
+- https://github.com/thanos-io/thanos/releases/latest — v0.42.4 (2026-07-30)
+- https://github.com/grafana/mimir/releases/latest — mimir-3.2.1 (2026-09-10)
+- https://github.com/VictoriaMetrics/VictoriaMetrics/releases/latest — v1.152.0 (2026-09-14)
+- https://github.com/coroot/coroot/releases/latest — v1.26.0 (2026-09-07)
+- https://github.com/robusta-dev/krr/releases/latest — v1.30.0 (2026-08-24)
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/web/api/v1/api.go — query_range: exceeded maximum resolution of 11,000 points per timeseries
+
+### Re-verification: traces / OTel / Jaeger (docs/research/03)
+
+- https://github.com/jaegertracing/jaeger/releases.atom — Jaeger release dates (v2.20.0 2026-07-20, v2.13.0 2025-12-03, v2.14.0 2026-01-02)
+- https://github.com/open-telemetry/opentelemetry-collector/releases/latest — redirect to v0.160.0
+- https://github.com/open-telemetry/opentelemetry-collector/releases.atom — core v1.66.0/v0.160.0 2026-09-02
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/servicegraphconnector/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/tailsamplingprocessor/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/loadbalancingexporter/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/deltatocumulativeprocessor/README.md — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/deltatocumulativeprocessor/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/processor/drainprocessor/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/prometheusexporter/config.go — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/receiver/filelogreceiver/README.md — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/extension/storage/filestorage/README.md — component source at v0.160.0
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/exporter/prometheusexporter/accumulator.go — prometheus exporter delta-sum accumulation logic
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/elasticsearch/config/config_legacy.go — Jaeger ES rotation schema / legacy flag gate
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/internal/storage/elasticsearch/config/config_rotation.go — Jaeger ES rotation schema / legacy flag gate
+- https://github.com/jaegertracing/jaeger/tree/v2.20.0/internal/storage/elasticsearch/config — dir listing (config_legacy.go, config_rotation.go)
+- https://github.com/NetManAIOps/TraceAnomaly/commits.atom — last commit 2020-12-02; no LICENSE at master/main
+- https://github.com/NetManAIOps/TraceVAE/commits.atom — last commit 2023-05-02; no LICENSE at master/main
+- https://github.com/uber-research/CRISP/commits.atom — last commit 2026-07-31
+- https://raw.githubusercontent.com/uber-research/CRISP/main/README.md — Python 3.11+, PyPI "coming soon"
+- https://github.com/jaegertracing/jaeger/tree/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/internal/mcptools/skills — MCP skills dir listing
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/server.go — jaeger_query extension (MCP mount)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/README.md — jaeger_query extension (MCP mount)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/internal/server.go — jaeger_query internals (MCP route / ai config)
+- https://raw.githubusercontent.com/jaegertracing/jaeger/v2.20.0/cmd/jaeger/internal/extension/jaegerquery/internal/flags.go — jaeger_query internals (MCP route / ai config)
+
+### Re-verification: AIOps, LLM and commercial prices (docs/research/04)
+
+- https://platform.claude.com/docs/en/about-claude/pricing — Claude API pricing: Haiku 4.5 $1/$5, Sonnet 5 $2/$10 (intro price now standard), cache 0.1x, batch -50%, US-only 1.1x for 4.6+ models, 4.7+ tokenizer ~30% more tokens
+- https://ai.google.dev/gemini-api/docs/deprecations — Gemini deprecations: 2.5 Flash-Lite no shutdown date; 3.1 Flash-Lite shutdown 2027-05-07 (replacement 3.5 Flash-Lite)
+- https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20%28N.%20Virginia%29/Linux/index.json — AWS us-east-1 Linux on-demand price file (published 2026-09-10): g4dn.xlarge 0.526, g6.xlarge 0.8048, g5.xlarge 1.006, g6e.xlarge 1.861, c7i.4xlarge 0.714 $/h
+- https://docs.datadoghq.com/integrations/openmetrics/ — all metrics retrieved by OpenMetrics integration are custom metrics
+- https://docs.coroot.com/ai/ — AI RCA section index; Coroot Cloud integration 10 free investigations/month
+- https://github.com/keephq/keep/releases.atom — v0.54.3 2026-09-09
+- https://github.com/grafana/oncall/releases/latest — redirects to grafana-cold-storage/oncall; v1.16.11 2026-02-11
+- https://github.com/HolmesGPT/holmesgpt/releases.atom — 0.41.0 2026-09-08
+- https://github.com/k8sgpt-ai/k8sgpt/releases.atom — v0.4.39 2026-09-14
+- https://github.com/robusta-dev/robusta/releases.atom — 0.49.0 2026-09-08
+- https://github.com/SigNoz/signoz/releases.atom — v0.141.1 2026-09-09
+- https://github.com/openobserve/openobserve/releases.atom — v1.0.0 2026-09-11
+- https://raw.githubusercontent.com/HolmesGPT/holmesgpt/master/LICENSE — Apache-2.0
+- https://raw.githubusercontent.com/k8sgpt-ai/k8sgpt/main/LICENSE — Apache-2.0
+- https://raw.githubusercontent.com/coroot/coroot/main/LICENSE — Apache-2.0
+- https://raw.githubusercontent.com/robusta-dev/robusta/master/LICENSE — MIT
+- https://raw.githubusercontent.com/openobserve/openobserve/main/LICENSE — AGPL-3.0
+- https://raw.githubusercontent.com/prometheus/alertmanager/main/LICENSE — Apache-2.0
+- https://github.com/keephq/keep/tree/main/ee — ee/ contains only LICENSE + identitymanager
+- https://raw.githubusercontent.com/grafana-cold-storage/oncall/dev/README.md — "entered maintenance mode and was archived on 2026-03-24" (maint. mode 2025-03-11)
+- https://raw.githubusercontent.com/grafana-cold-storage/oncall/dev/LICENSE — AGPL-3.0
+- https://www.cncf.io/projects/holmesgpt/ — HolmesGPT accepted to CNCF 2025-10-08 at Sandbox level
+- https://www.cncf.io/projects/k8sgpt/ — K8sGPT accepted to CNCF 2023-12-19 at Sandbox level
+- https://holmesgpt.dev/latest/development/evaluations/history/results_20260805_121417/ — 63-test run 2026-08-05: gpt-5.6-luna $0.01 (71%), terra $0.07 (83%), sonnet-5 $0.12 (83%), opus-5 $0.39 (94%, max $3.90)
+- https://holmesgpt.dev/latest/development/evaluations/latest-results/ — latest-results page (no table rendered via curl)
+- https://www.elastic.co/pricing/faq — no ERU/resource-unit text found
+- https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/additional-configuration/limits/ — canonical ML usage limits page (target of the old billing/ URL)
+
+### Re-verification: methods and benchmarks (docs/research/05)
+
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/README.md — TSB-AD README: Apr 1 2026 community submissions, NeurIPS 2024 D&B
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/benchmark_exp/README.md — submission process: "once verified we will add it to the Leaderboard"
+- https://export.arxiv.org/api/query?id_list=2509.21190,2505.14766,2502.12944,2607.12454,2605.24381,2606.02670,2506.21550,2506.18046 — arXiv metadata/abstracts (Time-RCD withdrawn; Toto; Toner; Uray SWaT/EUROCAST; Soni; Pinet MiLeTS@KDD; mTSBench TMLR; TAB PVLDB)
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-UAD/main/README.md — TSB-UAD README: "12686 time series", "13 methods", per-dataset AUC table (MGAB best = LOF)
+- https://www.paparrizos.org/papers/PaparrizosVLDB22a.pdf — TSB-UAD PVLDB'22 paper: 13766 series, 12 methods evaluated, Table 3
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AutoAD/main/README.md — TSB-AutoAD PVLDB 18(11) 2025 abstract (random-choice, FMs not one-size-fits-all)
+- https://export.arxiv.org/api/query?id_list=2009.13807,2109.05257,2202.04301,2309.02854,2307.16714,2312.01934,2604.12218,2604.16359,2305.15897,2308.10828,2406.06156 — arXiv metadata/abstracts: Wu&Keogh, Kim, Le&Zhang ICSE22, Landauer FSE24, Ali EMSE25, Nyyssölä QRS, Patel, LLM4Log, Khan EMSE24, Loghub-2.0 ISSTA24, LogBatcher
+- https://huggingface.co/api/models?search=chronos-2 — chronos-2-small is under autogluon/
+- https://raw.githubusercontent.com/amazon-science/chronos-forecasting/main/README.md — Chronos-2 release 20 Oct 2025, >90% win rate vs Bolt, model sizes
+- https://raw.githubusercontent.com/moment-timeseries-foundation-model/moment/main/README.md — MOMENT ICML 2024, MIT, reconstruction AD
+- https://huggingface.co/ibm-granite/granite-timeseries-tspulse-r1/raw/main/README.md — TSPulse card: 1M params, GPU-free, AD needs ~1536–2048 points
+- https://huggingface.co/Datadog/Toto-2.0-22m/raw/main/README.md — Toto 2.0 card latency table (A100, batch 8, 1,024 steps)
+- https://raw.githubusercontent.com/DataDog/toto/main/README.md — Toto 1.0 trained on >2T points, ~1T Datadog metrics
+- https://huggingface.co/datasets/Datadog/BOOM/raw/main/README.md — BOOM card: 350M points, 32,887 variates, 2,807 series, pre-production
+- https://github.com/TheDatumOrg/TSB-AD/tree/main/TSB_AD/models — TSB-AD models dir: TimeRCD_MAFT compiled .so, Time_RCD.py
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/TSB_AD/models/TimesFM.py — TSB-AD uses google/timesfm-1.0-200m-pytorch (also Chronos.py base, MOMENT.py MOMENT-1-base)
+- https://github.com/{grafana/promql-anomaly-detection,aws/random-cut-forest-by-aws,slok/sloth,pyrra-dev/pyrra,opensearch-project/anomaly-detection,asiffer/libspot}/releases/latest — latest tags (v0.2.1, 4.4.0-java, v0.16.0, v0.10.1, 3.6.0.0, v3.1.0)
+- https://raw.githubusercontent.com/logpai/loghub/master/README.md — Loghub README: 19 datasets table, 6 labeled, "more than 450 organizations"
+- https://export.arxiv.org/api/query?id_list=2008.06448 — Loghub paper abstract: 19 datasets, ISSRE 2023
+- https://arxiv.org/pdf/2008.06448 — Loghub paper: ~77 GB total, 6 labeled datasets
+- https://conf.researchr.org/track/ase-2024/ase-2024-research — ASE 2024 research track lists "Demonstration-Free: Towards More Practical Log Parsing with LLMs" (Yi Xiao et al.)
+- https://arxiv.org/pdf/2309.02854 — Landauer FSE'24: six datasets, experiment on five, ECVC competitive with DL, HDFS LogDeep 90.4% vs 72.0%
+- https://arxiv.org/pdf/2202.04301 — Le & Zhang ICSE'22: DL-only, random training selection causes data leakage
+- https://archive.org/wayback/available?url=codeascraft.com/2013/06/11/introducing-kale/ — Wayback lookup for Etsy Kale post
+- http://web.archive.org/web/20220127183214/https://codeascraft.com/2013/06/11/introducing-kale/ — archived Etsy Kale post: quarter million metrics, "err on the side of noise", Skyline doesn't alert
+- http://web.archive.org/web/20191118111719/https://eng.uber.com/argos/ — archived Uber Argos post (2015-11-24): nine of ten pages true outages, outlier+outage detector, hourly thresholds
+- http://web.archive.org/web/2020/https://netflixtechblog.com/telltale-netflix-application-monitoring-simplified-5c08bfa780ba — archived Netflix Telltale post: >100 apps, Slack/email/PagerDuty opt-in, single notification
+- https://export.arxiv.org/api/query?id_list=2204.09670,2107.13462 — Huawei DSN'22 alert anti-patterns; MSTL paper
+- http://proceedings.mlr.press/v48/guha16.pdf — RCF paper: insert/delete O(d) × depth
+- https://huggingface.co/api/models?search=time-rcd — Time-RCD HF model found (thu-sail-lab/Time-RCD)
+- https://huggingface.co/api/models/thu-sail-lab/Time-RCD — Time-RCD apache-2.0, 37.1M params
+- https://huggingface.co/thu-sail-lab/Time-RCD/raw/main/README.md — Time-RCD card: claims ICML 2026 acceptance
+- https://raw.githubusercontent.com/thu-sail-lab/Time-RCD/main/README.md — Time-RCD GitHub README: same ICML 2026 claim
+- https://api2.openreview.net/notes/search?term=Relative%20Context%20Discrepancy&limit=5 — OpenReview search (no Time-RCD hit; ICML claim unverified)
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/TSB_AD/models/Chronos.py — TSB-AD Chronos wrapper uses model_size 'base'
+- https://raw.githubusercontent.com/TheDatumOrg/TSB-AD/main/TSB_AD/models/MOMENT.py — TSB-AD uses AutonLab/MOMENT-1-base
+- https://dblp.org/search/publ/api?q=LogBatcher&format=json — 429 rate-limited
+
+### anomalyd Go PoC (main session)
+
+- https://go.dev/dl/?mode=json — latest Go releases on 2026-09-14: go1.27.1, go1.26.8 (anomalyd builds with go 1.26)
+- https://proxy.golang.org/github.com/klauspost/compress/@latest — klauspost/compress v1.20.0 (2026-09-02), anomalyd's only dependency (snappy)
+- https://proxy.golang.org/github.com/klauspost/compress/@v/v1.20.0.mod — requires go 1.25
+- https://proxy.golang.org/github.com/golang/snappy/@latest — golang/snappy v1.0.0 (2023-12-25), alternative snappy module, not used
+- https://raw.githubusercontent.com/prometheus/prometheus/v3.14.0/go.mod — Prometheus 3.14.0 depends on both golang/snappy and klauspost/compress
+- https://gcr.io/v2/distroless/static-debian12/tags/list — distroless static tags (nonroot present)
+- https://gcr.io/v2/distroless/static-debian13/tags/list — distroless static-debian13:nonroot, base of anomalyd/Dockerfile
+
+## 2026-09-15
+
+Price re-check (every vendor page, price table and price file behind docs/cost_model.py) and container-stdout log collection.
+
+- https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.csv — AWS Price List bulk CSV, us-east-1 (303 MB, streamed + grepped by SKU; confirms Tenancy=Shared); publication 2026-09-10T19:55:14Z
+- https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json — HEAD only (482 MB, Last-Modified 2026-09-10); not downloaded
+- https://grafana.com/web/pricing-calculator.3018e131447de20dfd1dae3657239e5bcb274eebbf8abe2a7bde1c9ccb532a49.js — calculator bundle: brackets, free allowances, graduated cost function
+- https://www.elastic.co/docs/deploy-manage/cloud-organization/billing/serverless-project-billing-dimensions.md — serverless billing dimensions (no tier-mode statement) (curl)
+- https://www.elastic.co/docs/deploy-manage/cloud-organization/billing/billing-faq.md — billing FAQ (no tier-mode statement) (curl)
+- https://ela.st/serverless-pricing?source=serverless-security&project=security — short link, 302 → cloud.elastic.co/cloud-pricing-table
+- https://cloud.elastic.co/cloud-pricing-table?productType=serverless&project=observability — Elastic Cloud pricing table, serverless Observability tiers, AWS us-east-1 (in-app browser)
+- https://cloud.elastic.co/api/v1/prices/base_prices?timestamp=2026-09-15T00%3A00%3A00Z — JSON behind the pricing table (tiers min/max/price, SKU start dates) (curl)
+- https://raw.githubusercontent.com/elastic/beats/v9.5.3/deploy/kubernetes/filebeat-kubernetes.yaml — Elastic's Filebeat DaemonSet at v9.5.3: filestream on /var/log/containers/*.log, `container` parser, add_kubernetes_metadata, hostPath mounts
+- https://raw.githubusercontent.com/kubernetes/website/main/content/en/docs/concepts/cluster-administration/logging.md — Kubernetes logging docs: containerLogMaxSize 10Mi / containerLogMaxFiles 5 defaults, logs under /var/log/pods
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/connector/countconnector/connector.go — count connector: one metric set per ResourceLogs, record timestamps fed to the counter
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.160.0/processor/batchprocessor/batch_processor.go — batch processor: one export loop per shard (sequential sends)
+- https://github.com/yannh/kubeconform/releases/latest — kubeconform latest release v0.8.0 (image ghcr.io/yannh/kubeconform:v0.8.0 used to validate the agent DaemonSet)
+- https://registry.npmjs.org/mermaid — mermaid dist-tags: latest 12.0.0 (2026-09-10); latest 11.x is 11.17.2 (2026-08-25), pinned for the GitHub Pages copy of the report
+- https://data.jsdelivr.com/v1/packages/npm/mermaid@12.0.0?structure=flat — mermaid 12 still ships dist/mermaid.min.js (UMD build)
+- https://en.wikipedia.org/wiki/Median_absolute_deviation — MAD: robust measure of spread; 1.4826 factor for normal data
+- https://grafana.com/blog/2018/08/02/the-red-method-how-to-instrument-your-services/ — RED method: Rate, Errors, Duration per service (Tom Wilkie)
+- https://en.wikipedia.org/wiki/Standard_deviation — standard deviation (σ)
+- https://en.wikipedia.org/wiki/Standard_score — z-score: number of standard deviations above or below the mean
+- https://jiemingzhu.github.io/pub/pjhe_icws2017.pdf — Drain paper: "Drain: An Online Log Parsing Approach with Fixed Depth Tree", He, Zhu, Zheng, Lyu, ICWS 2017
+- https://en.wikipedia.org/wiki/Isolation_forest — isolation forest: unsupervised anomaly detection by isolating points
+- https://facebook.github.io/prophet/ — Prophet: automated forecasting procedure in R and Python
+- https://arxiv.org/abs/2201.00382 — ECOD paper: outlier detection with empirical cumulative distribution functions (Li, Zhao et al.)
+- https://en.wikipedia.org/wiki/K-means_clustering — k-means clustering
+- https://ebpf.io/what-is-ebpf/ — eBPF: sandboxed programs in the Linux kernel
+- https://en.wikipedia.org/wiki/Coefficient_of_variation — coefficient of variation = standard deviation ÷ mean
+- https://arxiv.org/abs/1811.03509 — Zhu et al., "Tools and Benchmarks for Automated Log Parsing" (ICSE 2019): explains log parsing = template mining
+- https://en.wikipedia.org/wiki/F-score — F-score (Wikipedia): F1 = harmonic mean of precision and recall; HTTP 200
+- https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/ — Prometheus docs "Defining recording rules" (link for "recording rule")
+- https://en.wikipedia.org/wiki/Exponential_smoothing — exponential smoothing; has sections "Double exponential smoothing (Holt linear)" and "Triple exponential smoothing (Holt–Winters)"
+- https://www.brendangregg.com/usemethod.html — Brendan Gregg, "The USE Method"
+- https://www.statsmodels.org/stable/generated/statsmodels.tsa.seasonal.STL.html — statsmodels STL (seasonal-trend decomposition using LOESS), docs for 0.15.0
+- https://prometheus.io/docs/specs/native_histograms/ — Prometheus native histograms spec
+- https://en.wikipedia.org/wiki/DBSCAN — DBSCAN clustering (Grafana ML outlier detection)
+- https://en.wikipedia.org/wiki/CUSUM — CUSUM (cumulative sum) change detection (Kats)
+- https://opentelemetry.io/docs/concepts/signals/traces/ — OTel traces concept: trace = path of a request, span = unit of work, span kinds
+- https://grafana.com/docs/grafana/latest/fundamentals/exemplars/ — exemplar = trace representative of a measurement in a time interval
+- https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/component-stability.md — component stability levels development/alpha/beta/stable
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/main/featuregate/README.md — feature gate stages: alpha off by default, beta on by default, stable permanent
+- https://en.wikipedia.org/wiki/Percentile — percentile definition
+- https://www.w3.org/TR/trace-context/ — W3C Trace Context Recommendation: traceparent and tracestate headers
+- https://prometheus.io/docs/practices/histograms/ — Prometheus histograms: buckets with le, _sum/_count, histogram_quantile
+- https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function — FNV hash, incl. FNV-1a variant
+- https://en.wikipedia.org/wiki/Token_bucket — token bucket rate-limit algorithm
+- https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.160.0/pkg/ottl/README.md — OTTL = OpenTelemetry Transformation Language, small DSL for telemetry
+- https://en.wikipedia.org/wiki/Consistent_hashing — consistent hashing: only n/m keys remap on resize
+- https://www.uber.com/blog/crisp-critical-path-analysis-for-microservice-architectures/ — Uber CRISP blog: critical path = longest chain of dependent tasks
+- https://en.wikipedia.org/wiki/Variational_autoencoder — VAE definition
+- https://en.wikipedia.org/wiki/Long_short-term_memory — LSTM definition
+- https://modelcontextprotocol.io/ — MCP: open standard connecting AI apps to external systems
+- https://www.vldb.org/pvldb/vol15/p2774-paparrizos.pdf — VUS paper (Paparrizos et al., PVLDB 15(11) 2022): defines VUS / VUS-PR, threshold-free, range-aware
+- https://arxiv.org/abs/1906.03821 — Spectral Residual (SR) for time-series anomaly detection (Ren et al., Microsoft, KDD 2019)
+- https://github.com/TheDatumOrg/TSB-AD#detection-algorithm — TSB-AD README: one-line description of every benchmarked method (statistical, neural network, foundation model)
+- https://en.wikipedia.org/wiki/Precision_and_recall — precision, recall, precision-recall curve
+- https://en.wikipedia.org/wiki/Receiver_operating_characteristic — ROC curve and AUC
+- https://en.wikipedia.org/wiki/Mean_absolute_scaled_error — MASE, scaled by the (seasonal) naive forecast error
+- https://en.wikipedia.org/wiki/Scoring_rule#Continuous_ranked_probability_score — CRPS section of the scoring-rule article
+- https://en.wikipedia.org/wiki/Foundation_model — foundation model definition; mentions time-series forecasting models
+- https://en.wikipedia.org/wiki/Principal_component_analysis — PCA
+- https://en.wikipedia.org/wiki/Local_outlier_factor — LOF: local density deviation vs neighbours
+- https://otexts.com/fpp3/simple-methods.html — Forecasting: Principles and Practice (3rd ed): seasonal naive method = last value from the same season
+- https://en.wikipedia.org/wiki/Autoregressive_integrated_moving_average — ARIMA forecasting models
+- https://en.wikipedia.org/wiki/Change_detection — change (point) detection in time series
+- https://en.wikipedia.org/wiki/Local_regression — LOESS / local regression (the L in STL)
+- https://en.wikipedia.org/wiki/Extreme_value_theory — EVT; peaks-over-threshold with the generalized Pareto distribution
+- https://sre.google/sre-book/monitoring-distributed-systems/ — Google SRE book: "The Four Golden Signals" (latency, traffic, errors, saturation)
+- https://en.wikipedia.org/wiki/Large_language_model — LLM definition; mentions tokens and per-token pricing
+- https://en.wikipedia.org/wiki/Root_cause_analysis — root cause analysis (RCA) definition
+- https://en.wikipedia.org/wiki/AIOps — AIOps: AI, ML and big data analytics to automate IT operations
+- https://otexts.com/fpp3/decomposition.html — FPP3 ch. 3 "Time series decomposition" (trend-cycle, seasonal, remainder)
+- https://cel.dev/ — CEL (Common Expression Language), embeddable expression language
+- https://docs.vllm.ai/ — vLLM: library for LLM inference and serving
+- https://github.com/ggml-org/llama.cpp — llama.cpp: C/C++ LLM inference; 1.5–8-bit integer quantization
+- https://docs.litellm.ai/ — LiteLLM: call 100+ LLMs in the OpenAI input/output format (SDK or proxy)
+- https://ollama.com/ — Ollama: run open models locally
+- https://arxiv.org/abs/2305.13245 — GQA paper (grouped-query attention: fewer key-value heads than query heads)
+- https://en.wikipedia.org/wiki/Gossip_protocol — gossip protocol (peer-to-peer spreading of state)
+- https://en.wikipedia.org/wiki/Mean_time_to_recovery — MTTR: mean time to recovery / repair / resolve
+- https://clickhouse.com/docs/intro — "What is ClickHouse?": column-oriented SQL database for analytics
+- https://opentelemetry.io/docs/what-is-opentelemetry/ — "What is OpenTelemetry?": vendor-neutral framework for traces, metrics, logs
+- https://en.wikipedia.org/wiki/Poisson_distribution — Poisson: count of events in a fixed interval; mean = variance = λ, so standard deviation = √λ
+- https://kubernetes.io/docs/concepts/cluster-administration/logging/ — Kubernetes logging: kubelet integration "standardized as the CRI logging format"; containerLogMaxSize default 10Mi
+- https://arq-docs.helpmanual.io/ — used for: ARQ
+- https://arxiv.org/abs/0710.3742 — used for: BOCPD (Bayesian online change-point detection)
+- https://aws.amazon.com/ec2/ — used for: EC2 (Elastic Compute Cloud)
+- https://aws.amazon.com/ec2/pricing/on-demand/ — used for: on-demand price
+- https://creativecommons.org/licenses/by-nc/4.0/ — used for: CC-BY-NC
+- https://developers.openai.com/api/docs/guides/batch — used for: batch API
+- https://docs.github.com/en/pull-requests/reference/pull-requests — used for: PR (pull request)
+- https://docs.opensearch.org/latest/im-plugin/ism/index/ — used for: ISM (Index State Management)
+- https://docs.victoriametrics.com/ — used for: VictoriaMetrics
+- https://docs.victoriametrics.com/victoriametrics/metricsql/ — used for: MetricsQL
+- https://en.wikipedia.org/wiki/AI_agent — used for: agent (LLM agent)
+- https://en.wikipedia.org/wiki/AVX-512 — used for: AVX-512 (Advanced Vector Extensions)
+- https://en.wikipedia.org/wiki/Application_performance_management — used for: APM (application performance monitoring)
+- https://en.wikipedia.org/wiki/Artificial_intelligence — used for: AI (artificial intelligence)
+- https://en.wikipedia.org/wiki/Byte — used for: MiB, GiB
+- https://en.wikipedia.org/wiki/Cache_replacement_policies#LRU — used for: LRU (least recently used)
+- https://en.wikipedia.org/wiki/Circular_buffer — used for: ring buffer
+- https://en.wikipedia.org/wiki/Cloud_Native_Computing_Foundation — used for: CNCF (Cloud Native Computing Foundation)
+- https://en.wikipedia.org/wiki/Command-line_interface — used for: CLI (command-line interface)
+- https://en.wikipedia.org/wiki/Content_delivery_network — used for: CDN (content delivery network)
+- https://en.wikipedia.org/wiki/Continuous_integration — used for: CI (continuous integration)
+- https://en.wikipedia.org/wiki/Convolutional_neural_network — used for: CNN (convolutional neural network)
+- https://en.wikipedia.org/wiki/Copyleft — used for: copyleft
+- https://en.wikipedia.org/wiki/Dead_man%27s_switch — used for: dead-man's switch
+- https://en.wikipedia.org/wiki/Deep_learning — used for: deep learning, neural network
+- https://en.wikipedia.org/wiki/Directed_acyclic_graph — used for: DAG (directed acyclic graph)
+- https://en.wikipedia.org/wiki/Domain_Name_System — used for: DNS (Domain Name System)
+- https://en.wikipedia.org/wiki/Floating_point_operations_per_second — used for: FLOP (floating-point operation)
+- https://en.wikipedia.org/wiki/GNU_Affero_General_Public_License — used for: AGPL, AGPLv3 (GNU Affero General Public License v3)
+- https://en.wikipedia.org/wiki/GNU_General_Public_License — used for: GPL (GNU General Public License)
+- https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License — used for: LGPL (GNU Lesser General Public License)
+- https://en.wikipedia.org/wiki/Garbage_collection_%28computer_science%29 — used for: GC (garbage collection)
+- https://en.wikipedia.org/wiki/Graphics_processing_unit — used for: GPU (graphics processing unit)
+- https://en.wikipedia.org/wiki/Hash_function — used for: hash
+- https://en.wikipedia.org/wiki/High_availability — used for: HA (high availability)
+- https://en.wikipedia.org/wiki/ISO_8601 — used for: ISO 8601 timestamp
+- https://en.wikipedia.org/wiki/Input/output — used for: IO (input/output)
+- https://en.wikipedia.org/wiki/Java_virtual_machine — used for: JVM (Java virtual machine)
+- https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm — used for: KNN (k-nearest neighbours)
+- https://en.wikipedia.org/wiki/Large_language_model#Tokenization — used for: token
+- https://en.wikipedia.org/wiki/Machine_learning — used for: ML (machine learning)
+- https://en.wikipedia.org/wiki/Memory_management — used for: heap
+- https://en.wikipedia.org/wiki/Metric_prefix — used for: k, M, B (in numbers)
+- https://en.wikipedia.org/wiki/Microsecond — used for: ms, µs
+- https://en.wikipedia.org/wiki/Mozilla_Public_License — used for: MPL-2.0 (Mozilla Public License 2.0)
+- https://en.wikipedia.org/wiki/Novelty_detection — used for: novelty detection
+- https://en.wikipedia.org/wiki/On-premises_software — used for: on-prem (on-premises)
+- https://en.wikipedia.org/wiki/One-class_classification — used for: OCSVM (one-class support vector machine)
+- https://en.wikipedia.org/wiki/Open-core_model — used for: open core
+- https://en.wikipedia.org/wiki/Open-source_software — used for: OSS (open-source software)
+- https://en.wikipedia.org/wiki/Open_Source_Initiative — used for: OSI (Open Source Initiative)
+- https://en.wikipedia.org/wiki/Performance_indicator — used for: KPI (key performance indicator)
+- https://en.wikipedia.org/wiki/Permissive_software_license — used for: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause
+- https://en.wikipedia.org/wiki/Personal_data — used for: PII (personally identifiable information)
+- https://en.wikipedia.org/wiki/Regular_expression — used for: regex (regular expression)
+- https://en.wikipedia.org/wiki/Resident_set_size — used for: RSS (resident set size)
+- https://en.wikipedia.org/wiki/Scientific_notation — used for: 1e-9
+- https://en.wikipedia.org/wiki/Shard_%28database_architecture%29 — used for: sharding
+- https://en.wikipedia.org/wiki/Signal_%28IPC%29#SIGTERM — used for: SIGTERM
+- https://en.wikipedia.org/wiki/Single_sign-on — used for: SSO (single sign-on)
+- https://en.wikipedia.org/wiki/Software_as_a_service — used for: SaaS (software as a service)
+- https://en.wikipedia.org/wiki/Software_development_kit — used for: SDK (software development kit)
+- https://en.wikipedia.org/wiki/Software_release_life_cycle#General_availability — used for: GA (generally available)
+- https://en.wikipedia.org/wiki/Source-available_software — used for: source-available
+- https://en.wikipedia.org/wiki/Standard_streams — used for: stdout, stderr
+- https://en.wikipedia.org/wiki/Statistical_process_control — used for: SPC (statistical process control)
+- https://en.wikipedia.org/wiki/Stock_keeping_unit — used for: SKU (stock keeping unit)
+- https://en.wikipedia.org/wiki/Synthetic_data — used for: synthetic data
+- https://en.wikipedia.org/wiki/Transport_Layer_Security — used for: TLS (Transport Layer Security)
+- https://en.wikipedia.org/wiki/Universally_unique_identifier — used for: UUID (universally unique identifier)
+- https://en.wikipedia.org/wiki/User_interface — used for: UI (user interface)
+- https://github.com/GoogleContainerTools/distroless — used for: distroless image
+- https://github.com/prometheus/alertmanager#amtool — used for: amtool
+- https://github.com/yannh/kubeconform — used for: kubeconform
+- https://go.dev/doc/articles/race_detector — used for: race detector
+- https://grafana.com/docs/mimir/latest/ — used for: Mimir
+- https://grafana.com/oss/grafana/ — used for: Grafana OSS
+- https://huggingface.co/docs/hub/index — used for: HF (Hugging Face)
+- https://kafka.apache.org/ — used for: Kafka
+- https://kubernetes.io/docs/concepts/architecture/nodes/ — used for: node
+- https://kubernetes.io/docs/concepts/containers/cri/ — used for: CRI (Container Runtime Interface)
+- https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/ — used for: CRD (custom resource definition)
+- https://kubernetes.io/docs/concepts/services-networking/service/#headless-services — used for: headless service
+- https://kubernetes.io/docs/concepts/storage/volumes/#hostpath — used for: `hostPath`
+- https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/ — used for: HPA (Horizontal Pod Autoscaler)
+- https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/ — used for: DaemonSet
+- https://kubernetes.io/docs/concepts/workloads/controllers/deployment/ — used for: Deployment
+- https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/ — used for: StatefulSet
+- https://kubernetes.io/docs/concepts/workloads/pods/ — used for: pod
+- https://kubernetes.io/docs/reference/access-authn-authz/rbac/ — used for: RBAC (role-based access control)
+- https://kubernetes.io/docs/setup/production-environment/container-runtimes/ — used for: container runtime
+- https://martinfowler.com/bliki/CanaryRelease.html — used for: canary host
+- https://opengitops.dev/ — used for: GitOps
+- https://opentelemetry.io/docs/collector/ — used for: OTel Collector
+- https://opentelemetry.io/docs/collector/configuration/#connectors — used for: connector (OTel)
+- https://opentelemetry.io/docs/concepts/context-propagation/ — used for: context propagation
+- https://opentelemetry.io/docs/concepts/resources/ — used for: resource (OTel)
+- https://opentelemetry.io/docs/concepts/semantic-conventions/ — used for: semantic conventions (semconv)
+- https://opentelemetry.io/docs/specs/otel/metrics/data-model/#sums — used for: delta, cumulative
+- https://opentelemetry.io/docs/specs/otel/trace/tracestate-probability-sampling/ — used for: adjusted count
+- https://opentelemetry.io/docs/specs/otlp/ — used for: OTLP (OpenTelemetry Protocol)
+- https://pkg.go.dev/encoding/gob — used for: gob
+- https://platform.claude.com/docs/en/build-with-claude/prompt-caching — used for: prompt caching, cache read, TTL
+- https://prometheus.io/docs/alerting/latest/configuration/ — used for: groupKey
+- https://prometheus.io/docs/alerting/latest/configuration/#route — used for: route (Alertmanager)
+- https://prometheus.io/docs/concepts/data_model/ — used for: label; sample; series (time series)
+- https://prometheus.io/docs/concepts/jobs_instances/ — used for: scrape, scrape interval
+- https://prometheus.io/docs/practices/naming/#labels — used for: cardinality, label cardinality
+- https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write — used for: keep-filter
+- https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/ — used for: promtool
+- https://prometheus.io/docs/prometheus/latest/federation/ — used for: federation
+- https://prometheus.io/docs/prometheus/latest/querying/api/ — used for: `query_range`
+- https://prometheus.io/docs/prometheus/latest/storage/ — used for: active series, head series; retention; TSDB (time series database)
+- https://prometheus.io/docs/specs/prw/remote_write_spec/ — used for: remote_write
+- https://spdx.org/licenses/ — used for: SPDX (Software Package Data Exchange) licence id
+- https://sre.google/sre-book/being-on-call/ — used for: on-call
+- https://www.elastic.co/docs/explore-analyze/query-filter/languages/querydsl — used for: DSL (Query DSL)
+- https://www.elastic.co/docs/explore-analyze/transforms — used for: transform (Elasticsearch)
+- https://www.elastic.co/docs/explore-analyze/transforms/transform-checkpoints — used for: checkpoint (transform)
+- https://www.elastic.co/docs/manage-data/data-store/data-streams/time-series-data-stream-tsds — used for: TSDS (time series data stream)
+- https://www.elastic.co/docs/manage-data/ingest/transform-enrich/ingest-pipelines — used for: ingest pipeline
+- https://www.elastic.co/docs/manage-data/lifecycle/index-lifecycle-management — used for: ILM (index lifecycle management)
+- https://www.elastic.co/docs/reference/aggregations/search-aggregations-bucket-terms-aggregation — used for: terms aggregation
+- https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-filestream — used for: `container` parser, `ndjson` parser; `filestream` input; NDJSON (newline-delimited JSON)
+- https://www.elastic.co/docs/reference/beats/filebeat/filtering-enhancing-data — used for: Filebeat processor
+- https://www.elastic.co/docs/reference/ecs — used for: ECS (Elastic Common Schema)
+- https://www.elastic.co/docs/reference/ingest-processor/grok-processor — used for: grok
+- https://www.elastic.co/kibana — used for: Kibana
+- https://www.mongodb.com/legal/licensing/server-side-public-license — used for: SSPL (Server Side Public License)
+- https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation — used for: kubelet
+- https://prometheus.io/docs/prometheus/latest/querying/basics/ — used for: PromQL (Prometheus Query Language)
+- https://ieeexplore.ieee.org/document/10109145 — Brain paper page on IEEE Xplore (JavaScript-rendered; no metadata via curl)
+- https://dblp.org/search/publ/api?q=Brain%20log%20parsing%20bidirectional%20parallel%20tree&format=json&h=5 — DBLP search API; returned no JSON on 2026-09-15
+- https://api.crossref.org/works?query.title=Brain%3A%20Log%20Parsing%20with%20Bidirectional%20Parallel%20Tree&rows=3 — Crossref: Brain is in IEEE Transactions on Services Computing, 2023, DOI 10.1109/tsc.2023.3270566
+- https://export.arxiv.org/abs/2008.06448 — Loghub paper abstract: "19 real-world log datasets"
+- https://www.apache.org/licenses/LICENSE-2.0.txt — Apache License 2.0, official plain text; copied verbatim to LICENSE for the public repo
+- https://creativecommons.org/licenses/by/4.0/legalcode.txt — CC BY 4.0 legal code, official plain text; copied verbatim to LICENSE-docs

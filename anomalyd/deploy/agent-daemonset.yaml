@@ -1,0 +1,58 @@
+# anomalyd agent as a second reader of container stdout, next to the Filebeat DaemonSet.
+# Same files and mounts as Elastic's filebeat-kubernetes.yaml (v9.5.3): /var/log/containers/*.log are
+# symlinks into /var/log/pods (and into /var/lib/docker/containers on Docker-runtime nodes).
+# Filebeat keeps its single output; the agent sends only per-template counts to the anomalyd server.
+# The image is ../Dockerfile; registry.internal and the server URL are placeholders.
+# Validated with: kubeconform v0.8.0 -strict.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: anomalyd-agent
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: anomalyd-agent}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: anomalyd-agent}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: anomalyd-agent}
+      annotations:
+        prometheus.io/scrape: "true"   # the agent's own counters (lines, pushes, errors)
+        prometheus.io/port: "9401"
+    spec:
+      tolerations:
+        - operator: Exists             # every node, like the log shipper
+      containers:
+        - name: agent
+          image: registry.internal/anomalyd:0.1
+          args:
+            - agent
+            - --path=/var/log/containers/*.log
+            - --container=auto          # CRI (containerd, CRI-O) or Docker json-file, per line
+            - --format=json             # JSON apps; plain-text lines are mined as they are
+            - '--service-from-path=_(?P<service>[^_]+)-[0-9a-f]{64}\.log$'   # container name
+            - --server=http://anomalyd.monitoring.svc:9400
+            - --name=$(NODE_NAME)
+            - --listen=:9401
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          ports:
+            - {name: metrics, containerPort: 9401}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            runAsUser: 0                # runtime log files are root-owned (0640); root reads its own files
+            runAsNonRoot: false         # without capabilities, so no CAP_DAC_OVERRIDE
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: varlog, mountPath: /var/log, readOnly: true}
+            - {name: varlibdockercontainers, mountPath: /var/lib/docker/containers, readOnly: true}
+      volumes:
+        - name: varlog
+          hostPath: {path: /var/log}
+        - name: varlibdockercontainers
+          hostPath: {path: /var/lib/docker/containers}

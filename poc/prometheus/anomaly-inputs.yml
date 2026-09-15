@@ -1,0 +1,90 @@
+# Inputs for grafana/promql-anomaly-detection (Apache-2.0, pin v0.2.1):
+#   https://github.com/grafana/promql-anomaly-detection/tree/v0.2.1/rules
+# Load its rules/adaptive.yml + rules/robust.yml next to this file. They pick up every series that
+# carries an `anomaly_name` label and emit anomaly:level / anomaly:upper_band / anomaly:lower_band
+# plus an `AnomalyDetected` alert (~9 derived series per input for adaptive, ~17 for robust).
+#
+# Rule of thumb for 1-10 M active series: only feed pre-aggregated, service-level series here
+# (a few thousand at most). Never tag raw per-pod / per-URL series.
+#
+# All inputs expose a `service` label so Alertmanager can group/inhibit logs, traces and metrics
+# alerts for the same service together (spanmetrics uses service_name, ElastAlert2 sends service).
+groups:
+  - name: anomaly-inputs-traces
+    interval: 1m
+    rules:
+      # RED metrics produced by the OTel spanmetrics connector (see ../otel/traces-tier2-spanmetrics-tailsampling.yaml).
+      - record: anomaly:svc:requests:rate5m
+        expr: |
+          sum by (service) (
+            label_replace(
+              rate(traces_span_metrics_calls_total{span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER"}[5m]),
+              "service", "$1", "service_name", "(.*)"
+            )
+          )
+        labels:
+          anomaly_name: svc_requests
+          anomaly_type: requests
+          anomaly_strategy: adaptive
+
+      # Ratios are rarely normally distributed -> robust (median +/- MAD) strategy.
+      - record: anomaly:svc:errors:ratio5m
+        expr: |
+          sum by (service) (
+            label_replace(
+              rate(traces_span_metrics_calls_total{span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER", status_code="STATUS_CODE_ERROR"}[5m]),
+              "service", "$1", "service_name", "(.*)"
+            )
+          )
+          /
+          sum by (service) (
+            label_replace(
+              rate(traces_span_metrics_calls_total{span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER"}[5m]),
+              "service", "$1", "service_name", "(.*)"
+            )
+          )
+        labels:
+          anomaly_name: svc_error_ratio
+          anomaly_type: errors
+          anomaly_strategy: robust
+
+      - record: anomaly:svc:latency:p95_5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (
+              label_replace(
+                rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER"}[5m]),
+                "service", "$1", "service_name", "(.*)"
+              )
+            )
+          )
+        labels:
+          anomaly_name: svc_latency_p95
+          anomaly_type: latency
+          anomaly_strategy: robust
+
+  - name: anomaly-inputs-logs
+    interval: 1m
+    rules:
+      # Produced by ../logs/drain3_exporter.py or the OTel drain+count variant (../otel/logs-drain-count.yaml);
+      # both export log_lines_total{service} and log_template_lines_total{service, template_id}
+      # (the OTel variant uses the template text itself as template_id).
+      - record: anomaly:svc:log_lines:rate5m
+        expr: sum by (service) (rate(log_lines_total[5m]))
+        labels:
+          anomaly_name: svc_log_lines
+          anomaly_type: requests
+          anomaly_strategy: adaptive
+
+      # One band per (service, template). Bounded by the exporter's --max-exported cap (OTel: drain
+      # max_clusters). The upstream sparse filter for anomaly_type=requests is ineffective in v0.2.1
+      # (catch-all OR re-adds it), so drop templates < 5 lines/min here.
+      - record: anomaly:svc_template:log_lines:rate5m
+        expr: |
+          sum by (service, template_id) (rate(log_template_lines_total{template_id!="other"}[5m]))
+          and
+          sum by (service, template_id) (rate(log_template_lines_total{template_id!="other"}[1h])) >= 5/60
+        labels:
+          anomaly_name: svc_log_template
+          anomaly_type: requests
+          anomaly_strategy: adaptive

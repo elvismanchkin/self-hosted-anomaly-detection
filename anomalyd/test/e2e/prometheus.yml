@@ -1,0 +1,28 @@
+# e2e Prometheus: scrapes the synthetic generator, records the anomaly inputs, remote-writes
+# only those inputs to anomalyd, and scrapes anomalyd itself.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    prometheus: e2e # added to remote-written samples; anomalyd drops it (--ignore-labels)
+
+rule_files:
+  - /etc/prometheus/rules.yml
+  - /etc/prometheus/upstream/*.yml # grafana/promql-anomaly-detection rules, if mounted
+
+scrape_configs:
+  - job_name: prometheus # self-scrape for the remote-write and rule-failure checks
+    static_configs: [{ targets: ["localhost:9090"] }]
+  - job_name: synthetic
+    static_configs: [{ targets: ["ad-genm:9500"] }]
+  - job_name: anomalyd
+    static_configs: [{ targets: ["ad-server:9400"] }]
+  - job_name: anomalyd-agent
+    static_configs: [{ targets: ["ad-agent:9401"] }]
+
+remote_write:
+  - url: http://ad-server:9400/api/v1/write
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: "anomaly:svc:.+" # the recorded inputs only, not raw series or upstream band outputs
+        action: keep

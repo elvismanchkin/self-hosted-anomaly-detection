@@ -1,0 +1,27 @@
+# ElastAlert2 global config (PoC). Docs: https://elastalert2.readthedocs.io/
+# Runs as one extra process next to Elasticsearch; state lives in the writeback index.
+rules_folder: rules
+
+# How often rules run, and how far back each run looks.
+# Keep run_every >= 1m at 200 GB-2 TB/day: every rule is at least one ES query per run.
+run_every:
+  minutes: 1
+buffer_time:
+  minutes: 15
+
+es_host: elasticsearch.internal
+es_port: 9200
+use_ssl: true
+verify_certs: true
+# Use a dedicated read-only role (indices: filebeat-*, anomaly-logs-tmpl-1m; privileges: read, view_index_metadata)
+# plus write on the writeback index. Keep credentials in env/secret store, not in this file.
+es_username: elastalert
+es_password: CHANGE_ME
+
+writeback_index: elastalert_status
+alert_time_limit:
+  days: 2
+
+# Page size for document-download rules; total per run = max_query_size x max_scrolling_count.
+max_query_size: 1000
+max_scrolling_count: 5

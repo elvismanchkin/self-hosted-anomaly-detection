@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+# Upstream rules fetched for tests (see poc/README.md), not vendored
+poc/prometheus/vendor/
+anomalyd/test/e2e/out/

@@ -1,0 +1,42 @@
+# Error-level volume of one log template jumps >= 3x vs the previous 15 minutes.
+# Sum of the rollup's `count` field, per (service, template), on the small 1-minute index.
+name: error-template-spike
+type: spike_aggregation
+index: anomaly-logs-tmpl-1m
+timestamp_field: "@timestamp"
+
+filter:
+  - term:
+      log.level: error
+
+metric_agg_key: count
+metric_agg_type: sum
+query_key: ["service.name", "log.template_id"]   # per (service, template); the same template can occur in many services
+terms_size: 5000     # per terms level; default 50 keeps only the busiest keys per run
+
+timeframe:
+  minutes: 15
+spike_height: 3
+spike_type: up
+threshold_cur: 50      # current window must hold >= 50 error lines
+alert_on_new_data: true   # a template going from 0 to >= threshold_cur also counts
+# Query per run_every (1 min) and let the spike windows accumulate; without this, aggregation
+# rules only query in full buffer_time chunks and a fresh run returns nothing.
+use_run_every_query_size: true
+
+realert:
+  minutes: 30
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2
+alertmanager_alertname: LogErrorTemplateSpike
+alertmanager_labels:
+  source: elastalert
+  severity: warning
+  tier: "1"
+  # spike_aggregation puts a compound key into the match only as one field, "service.name,log.template_id": "<svc>,<id>",
+  # so alertmanager_fields lookups would yield "null"; split it with Jinja via the _data root instead.
+  service: "{{ _data['service.name,log.template_id'].split(',')[0] }}"
+  template_id: "{{ _data['service.name,log.template_id'].split(',')[1] }}"

@@ -1,0 +1,41 @@
+# A service logs an exception class it has not logged in the previous 7 days.
+# Needs a keyword field that is stable across occurrences (ECS error.type = exception class),
+# not the raw message (every message is unique -> endless "new" terms).
+name: new-error-type-per-service
+type: new_term
+index: filebeat-*
+timestamp_field: "@timestamp"
+
+filter:
+  - exists:
+      field: error.type
+
+# Composite key: the pair (service, error type) must be new.
+fields:
+  - ["service.name", "error.type"]
+terms_window_size:
+  days: 7
+# Build the 7-day baseline in 1-day slices (one terms agg per slice) to keep each ES query bounded.
+window_step_size:
+  days: 1
+use_keyword_postfix: false   # ECS service.name / error.type are keyword; there is no .keyword sub-field
+alert_on_missing_field: false
+# Not aggregation-based: each run downloads the matching raw error docs, at most max_query_size x
+# max_scrolling_count (config.yaml); a pair seen only past that cap is missed until it recurs.
+
+realert:
+  hours: 6
+query_key: ["service.name", "error.type"]   # without it, the first new pair silences all others for 6 h
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2
+alertmanager_alertname: LogNewErrorType
+alertmanager_labels:
+  source: elastalert
+  severity: info
+  tier: "1"
+alertmanager_fields:
+  service: service.name
+  error_type: error.type

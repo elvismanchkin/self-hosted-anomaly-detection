@@ -1,0 +1,42 @@
+# Tier 1 (stateless): receives spans from apps and routes every span of a trace to the same
+# tier-2 instance (trace-ID hashing). Required as soon as tier 2 has more than one replica,
+# because tail sampling and service-graph pairing need whole traces in one process.
+# Validated with: otelcol-contrib v0.160.0 `validate --config`.
+receivers:
+  otlp:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:4317}
+      http: {endpoint: 0.0.0.0:4318}
+  # Apps still on Jaeger SDKs / agents.
+  jaeger:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:14250}
+      thrift_http: {endpoint: 0.0.0.0:14268}
+      thrift_compact: {endpoint: 0.0.0.0:6831}
+
+processors:
+  memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
+
+exporters:
+  load_balancing:
+    routing_key: traceID
+    timeout: 10s
+    retry_on_failure: {enabled: true}        # off by default: enable so data re-routes on ring changes
+    sending_queue: {enabled: true, queue_size: 10000}
+    protocol:
+      otlp:
+        tls: {insecure: true}
+        timeout: 5s
+    resolver:
+      dns:
+        hostname: otel-sampler-headless.observability.svc.cluster.local
+        port: "4317"                     # string, not int
+      # Kubernetes alternative (needs RBAC on EndpointSlices):
+      # k8s: {service: otel-sampler-headless.observability, ports: [4317]}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger]
+      processors: [memory_limiter]
+      exporters: [load_balancing]

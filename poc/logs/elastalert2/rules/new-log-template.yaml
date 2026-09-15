@@ -1,0 +1,38 @@
+# A (service, log template) pair never seen in the previous 14 days = new code path, new error,
+# new dependency failure. Reads the 1-minute rollup built by ../../elastic/transform-logs-tmpl-1m.json,
+# so the 14-day baseline scan touches ~services x templates x 1440 rows/day instead of raw TB/day.
+name: new-log-template
+type: new_term
+index: anomaly-logs-tmpl-1m
+timestamp_field: "@timestamp"
+
+fields:
+  - ["service.name", "log.template_id"]
+terms_window_size:
+  days: 14
+window_step_size:
+  days: 1
+use_keyword_postfix: false   # rollup fields are already keywords
+
+realert:
+  hours: 1
+query_key: ["service.name", "log.template_id"]
+
+alert_subject: "New log template in {0}"
+alert_subject_args: ["service.name"]
+alert_text: "{0}"
+alert_text_args: ["log.template"]
+alert_text_type: alert_text_only
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2
+alertmanager_alertname: LogNewTemplate
+alertmanager_labels:
+  source: elastalert
+  severity: info
+  tier: "1"
+alertmanager_fields:
+  service: service.name
+  template_id: log.template_id

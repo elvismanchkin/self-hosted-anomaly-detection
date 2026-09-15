@@ -1,0 +1,24 @@
+{
+  "description": "Continuous transform (free on Basic): 1-minute log counts per service x template x level. All anomaly rules read this small index, never the raw TB/day indices. The dest name must NOT match the source patterns (logs-* would include itself). missing_bucket keeps lines without service.name, or with a log.template over the keyword ignore_above (1024), instead of silently dropping them. Events arriving later than sync.time.delay are not counted; raise delay or sync on an ingest-timestamp field.",
+  "source": {
+    "index": ["logs-*", "filebeat-*"],
+    "query": { "exists": { "field": "log.template_id" } }
+  },
+  "dest": { "index": "anomaly-logs-tmpl-1m" },
+  "frequency": "1m",
+  "sync": { "time": { "field": "@timestamp", "delay": "60s" } },
+  "pivot": {
+    "group_by": {
+      "@timestamp":      { "date_histogram": { "field": "@timestamp", "fixed_interval": "1m" } },
+      "service.name":    { "terms": { "field": "service.name", "missing_bucket": true } },
+      "log.template_id": { "terms": { "field": "log.template_id" } },
+      "log.template":    { "terms": { "field": "log.template", "missing_bucket": true } },
+      "log.level":       { "terms": { "field": "log.level", "missing_bucket": true } }
+    },
+    "aggregations": {
+      "count": { "value_count": { "field": "@timestamp" } }
+    }
+  },
+  "retention_policy": { "time": { "field": "@timestamp", "max_age": "30d" } },
+  "settings": { "max_page_search_size": 2000 }
+}

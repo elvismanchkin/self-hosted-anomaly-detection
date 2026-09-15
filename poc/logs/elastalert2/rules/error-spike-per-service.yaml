@@ -1,0 +1,40 @@
+# Error-log volume per service jumps >= 3x vs the previous window.
+# Spike rule compares two adjacent windows of `timeframe` (reference vs current).
+name: error-spike-per-service
+type: spike
+index: filebeat-*
+timestamp_field: "@timestamp"
+
+filter:
+  - terms:
+      log.level: ["error", "ERROR", "fatal", "FATAL"]
+
+query_key: service.name
+# Aggregate in Elasticsearch (terms agg per service) instead of pulling documents - mandatory at this volume.
+use_terms_query: true
+terms_size: 200
+
+timeframe:
+  minutes: 15
+spike_height: 3
+spike_type: up
+threshold_cur: 50     # ignore spikes where the current window has < 50 errors (low-volume noise)
+threshold_ref: 10     # and where the reference window was near-empty
+alert_on_new_data: false
+
+realert:
+  minutes: 30
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2   # default is v1, which current Alertmanager no longer serves
+alertmanager_alertname: LogErrorSpike
+alertmanager_labels:
+  source: elastalert
+  severity: warning
+  tier: "1"
+alertmanager_fields:
+  service: service.name
+alertmanager_annotations:
+  runbook: "https://wiki.internal/runbooks/log-error-spike"

@@ -1,0 +1,21 @@
+# Config for prom_anomaly_job.py. Score only a curated, pre-aggregated set (a few hundred to a few
+# thousand series): recording rules from ../prometheus/anomaly-inputs.yml or topk() expressions.
+step: 5m          # query_range resolution; season must be a multiple of it
+season: 1w        # compare "now" with the same time N weeks ago
+seasons: 1        # 1 -> needs 2 weeks of history (default 15d retention) but echoes last week's incidents as anomalies;
+                  # 3 -> needs 4 weeks: raise retention or put a small long-retention Prometheus behind it
+lookback: 2h      # cold-start fallback window when there is no seasonal history yet
+threshold: 4      # |robust z| above this is anomalous (band = expected +/- threshold * scale)
+max_series: 500   # per query; the job warns and truncates beyond this
+
+queries:
+  - name: svc_requests
+    expr: anomaly:svc:requests:rate5m
+    rel_floor: 0.05          # scale never below 5 % of the expected value (kills noise on flat series)
+  - name: svc_error_ratio
+    expr: anomaly:svc:errors:ratio5m
+    abs_floor: 0.001         # ratios: ignore wiggles below 0.1 percentage point
+  - name: svc_latency_p95
+    expr: anomaly:svc:latency:p95_5m
+  - name: top_log_templates
+    expr: topk(200, anomaly:svc_template:log_lines:rate5m)

@@ -1,0 +1,32 @@
+# Share of error lines per service over 5-minute buckets exceeds 5%.
+# Runs as a single filters/terms aggregation in Elasticsearch - cheap even at TB/day.
+name: error-ratio-per-service
+type: percentage_match
+index: filebeat-*
+timestamp_field: "@timestamp"
+
+query_key: service.name
+terms_size: 500      # aggregation rules also default to 50 keys
+match_bucket_filter:
+  - terms:
+      log.level: ["error", "ERROR", "fatal", "FATAL"]
+max_percentage: 5
+min_denominator: 200  # skip services with < 200 lines in the bucket
+bucket_interval:
+  minutes: 5
+sync_bucket_interval: true
+
+realert:
+  minutes: 30
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2
+alertmanager_alertname: LogErrorRatioHigh
+alertmanager_labels:
+  source: elastalert
+  severity: warning
+  tier: "1"
+alertmanager_fields:
+  service: service.name

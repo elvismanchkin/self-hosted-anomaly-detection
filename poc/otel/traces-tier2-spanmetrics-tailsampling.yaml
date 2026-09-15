@@ -1,0 +1,85 @@
+# Tier 2 (stateful, sits in front of the existing Jaeger collector):
+#   1. span_metrics + service_graph see 100 % of spans  -> RED metrics for Prometheus (anomaly inputs)
+#   2. tail_sampling keeps errors, slow traces and a 2 % baseline -> Jaeger / Elasticsearch
+# Metric AD therefore reflects all traffic while ES stores ~3-5 % of traces.
+# Resulting series: traces_span_metrics_calls_total, traces_span_metrics_duration_milliseconds_bucket
+# (labels service_name, span_name, span_kind, status_code) - used by ../prometheus/anomaly-inputs.yml.
+# Validated with: otelcol-contrib v0.160.0 `validate --config`.
+receivers:
+  otlp:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:4317}
+
+processors:
+  memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
+
+  # Tame span-name cardinality before it becomes a Prometheus label (raw URLs/IDs in span names).
+  transform/sanitize:
+    error_mode: ignore
+    trace_statements:
+      - context: span                   # explicit: the context can't be inferred from this function alone
+        statements:
+          - set_semconv_span_name("1.37.0", "unsanitized_span_name")
+
+  tail_sampling:
+    decision_wait: 15s
+    num_traces: 200000                  # >= 2 x new traces/s per instance x decision_wait
+    expected_new_traces_per_sec: 5000
+    decision_cache: {sampled_cache_size: 1000000, non_sampled_cache_size: 2000000}
+    policies:
+      - name: drop-probes
+        type: drop
+        drop:
+          drop_sub_policy:
+            - name: probe-routes
+              type: string_attribute
+              string_attribute: {key: http.route, values: ["/health.*", "/ready", "/live", "/metrics"], enabled_regex_matching: true}
+      - {name: errors,   type: status_code,       status_code: {status_codes: [ERROR]}}
+      - {name: slow,     type: latency,           latency: {threshold_ms: 1000}}
+      - {name: forced,   type: boolean_attribute, boolean_attribute: {key: app.force_sample, value: true}}
+      - {name: baseline, type: probabilistic,     probabilistic: {sampling_percentage: 2}}
+
+  batch: {}
+
+connectors:
+  span_metrics:                         # renamed from `spanmetrics` in v0.151.0 (old name = deprecated alias)
+    histogram:
+      unit: ms                          # Jaeger SPM expects ms unless its latency_unit is set to s
+      explicit: {buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]}
+    dimensions:
+      - name: deployment.environment.name   # low-cardinality attributes only
+    # Keep the default dimensions: status.code drives Jaeger's error rate.
+    aggregation_cardinality_limit: 100000   # overflow lands in otel.metric.overflow="true"
+    metrics_flush_interval: 30s
+    metrics_expiration: 15m               # per resource: no spans for 15m -> stop exporting it
+    series_expiration: 15m                # per dimension combination (e.g. a span name that stopped)
+    resource_metrics_key_attributes: [service.name]   # else one series set per app pod (service.instance.id -> instance label)
+    exemplars: {enabled: true, max_per_data_point: 2}
+  service_graph:
+    latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2500ms, 5s, 10s]
+    store: {ttl: 10s, max_items: 100000}
+  forward/sample: {}
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    enable_open_metrics: true           # needed to expose exemplars
+    metric_expiration: 15m
+  otlp_grpc/jaeger:                     # `otlp` is a deprecated alias of `otlp_grpc` in v0.160.0
+    endpoint: jaeger-collector.observability.svc:4317   # Jaeger v1 >= 1.46 or v2 accept OTLP
+    tls: {insecure: true}
+    sending_queue: {enabled: true, num_consumers: 20, queue_size: 20000}
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/sanitize]
+      exporters: [span_metrics, service_graph, forward/sample]
+    traces/sampled:
+      receivers: [forward/sample]
+      processors: [tail_sampling, batch]
+      exporters: [otlp_grpc/jaeger]
+    metrics/red:
+      receivers: [span_metrics, service_graph]
+      exporters: [prometheus]

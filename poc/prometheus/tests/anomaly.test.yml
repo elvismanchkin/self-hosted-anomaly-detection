@@ -1,0 +1,171 @@
+# promtool test rules poc/prometheus/tests/anomaly.test.yml
+rule_files:
+  - ../anomaly-inputs.yml
+  - ../anomaly-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # checkout: 100 server spans/min, 3 % errors -> inputs carry anomaly labels; both burn-rate alerts fire.
+  - interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0+3x120'
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+97x120'
+    promql_expr_test:
+      - expr: anomaly:svc:requests:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'anomaly:svc:requests:rate5m{service="checkout", anomaly_name="svc_requests", anomaly_type="requests", anomaly_strategy="adaptive"}'
+            value: 1.6666666666666667
+      - expr: anomaly:svc:errors:ratio5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'anomaly:svc:errors:ratio5m{service="checkout", anomaly_name="svc_error_ratio", anomaly_type="errors", anomaly_strategy="robust"}'
+            value: 0.03
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: {service: checkout, severity: page, tier: "0"}
+            exp_annotations:
+              summary: "checkout burning error budget 14x (1h window)"
+      - eval_time: 70m
+        alertname: ErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels: {service: checkout, severity: page, tier: "0"}
+            exp_annotations:
+              summary: "checkout burning error budget 6x (6h window)"
+
+  # search: 0.05 % errors -> no burn-rate alert.
+  - interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="search", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0+1x120'
+      - series: 'traces_span_metrics_calls_total{service_name="search", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+1999x120'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: ErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # New log templates: quiet for 70 min, then one new template per minute.
+  - interval: 1m
+    input_series:
+      - series: 'log_templates_created_total{job="drain3-exporter", service="checkout"}'
+        values: '0x70 1+1x20'
+      - series: 'process_start_time_seconds{job="drain3-exporter"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: LogNewTemplatesBurst
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: LogNewTemplatesBurst
+        exp_alerts:
+          - exp_labels: {service: checkout, severity: warning, tier: "1"}
+            exp_annotations:
+              summary: "checkout: 15 new log templates in 15m"
+              description: 'Look up template text via log_template_info{service="checkout"}.'
+
+  # Warm-up suppression: exporter restarted 10 min ago, everything is new -> no alert.
+  - interval: 1m
+    input_series:
+      - series: 'log_templates_created_total{job="drain3-exporter", service="checkout"}'
+        values: '0+10x30'
+      - series: 'process_start_time_seconds{job="drain3-exporter"}'
+        values: '1200x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: LogNewTemplatesBurst
+        exp_alerts: []
+
+  # Two exporter shards: restarting shard b (search) 10 min ago must not mute shard a (checkout).
+  - interval: 1m
+    input_series:
+      - series: 'log_templates_created_total{job="drain3-exporter", instance="a:9105", service="checkout"}'
+        values: '0x70 1+1x20'
+      - series: 'log_templates_created_total{job="drain3-exporter", instance="b:9105", service="search"}'
+        values: '0x70 1+1x20'
+      - series: 'process_start_time_seconds{job="drain3-exporter", instance="a:9105"}'
+        values: '0x90'
+      - series: 'process_start_time_seconds{job="drain3-exporter", instance="b:9105"}'
+        values: '4800x90'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: LogNewTemplatesBurst
+        exp_alerts:
+          - exp_labels: {service: checkout, severity: warning, tier: "1"}
+            exp_annotations:
+              summary: "checkout: 15 new log templates in 15m"
+              description: 'Look up template text via log_template_info{service="checkout"}.'
+
+  # Sparse templates (< 5 lines/min over 1h) and the "other" bucket get no band.
+  - interval: 1m
+    input_series:
+      - series: 'log_template_lines_total{service="a", template_id="1"}'
+        values: '0+80x60'
+      - series: 'log_template_lines_total{service="a", template_id="2"}'
+        values: '0+1x60'
+      - series: 'log_template_lines_total{service="a", template_id="other"}'
+        values: '0+20x60'
+    promql_expr_test:
+      - expr: anomaly:svc_template:log_lines:rate5m
+        eval_time: 60m
+        exp_samples:
+          - labels: 'anomaly:svc_template:log_lines:rate5m{service="a", template_id="1", anomaly_name="svc_log_template", anomaly_type="requests", anomaly_strategy="adaptive"}'
+            value: 1.3333333333333333
+
+  # Scorer down: its last-success series disappears; the alert must still fire.
+  - interval: 1m
+    input_series:
+      - series: 'anomaly_job_last_success_timestamp_seconds'
+        values: '0+60x5'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AnomalyJobStale
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: AnomalyJobStale
+        exp_alerts:
+          - exp_labels: {severity: warning, tier: meta}
+            exp_annotations:
+              summary: "Tier-2 anomaly job has not completed a run for 10+ minutes"
+
+  # Tier-2 score and detector health.
+  - interval: 1m
+    input_series:
+      - series: 'anomaly_score{anomaly_query="http_rps", service="search"}'
+        values: '6x30'
+      - series: 'anomaly_job_last_success_timestamp_seconds'
+        values: '0x30'
+      - series: 'log_template_lines_total{service="a", template_id="1"}'
+        values: '0+80x60'
+      - series: 'log_template_lines_total{service="a", template_id="other"}'
+        values: '0+20x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: SeasonalAnomalyScoreHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: SeasonalAnomalyScoreHigh
+        exp_alerts:
+          - exp_labels: {anomaly_query: http_rps, service: search, severity: warning, tier: "2"}
+            exp_annotations:
+              summary: "http_rps deviates from its seasonal baseline (score 6.0)"
+      - eval_time: 11m
+        alertname: AnomalyJobStale
+        exp_alerts:
+          - exp_labels: {severity: warning, tier: meta}
+            exp_annotations:
+              summary: "Tier-2 anomaly job has not completed a run for 10+ minutes"
+      - eval_time: 50m
+        alertname: LogTemplateCapReached
+        exp_alerts:
+          - exp_labels: {severity: info, tier: meta}
+            exp_annotations:
+              summary: "Drain3 exporter template cap reached (20% of lines unlabelled)"

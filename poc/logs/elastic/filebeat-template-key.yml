@@ -1,0 +1,87 @@
+# Filebeat (>= 7.8 for `replace`; its docs page only exists from 8.5) variant of ingest-pipeline-template-key.json.
+# Same template text, but different ids (xxhash of "|log.template|<text>" vs MurmurHash3): use one variant fleet-wide.
+# Runs on every host, so the regex CPU is spread across the fleet instead of ES ingest nodes.
+# Filebeat's single output stays unchanged.
+#
+# Container stdout: the runtime writes each container's stdout/stderr to a file on the node
+# (/var/log/containers/*.log -> /var/log/pods/..., CRI format), and Filebeat tails those files.
+# The input below is the one in Elastic's Kubernetes manifest (deploy/kubernetes/filebeat-kubernetes.yaml
+# at v9.5.3) plus an `ndjson` parser. Keep your own input and merge two things into it:
+#   1. the `ndjson` parser, if some apps log JSON: without it `message` holds the app's whole JSON
+#      line and the template is computed on JSON text. Lines that are not JSON pass through unchanged.
+#   2. the `processors:` list below (input-level or global).
+# Validated with Filebeat 9.5.3 on CRI files: JSON apps -> 24 template ids for 20k lines; text apps with
+# a leading timestamp -> 24 ids too (13,218 without the <TS> mask: one per millisecond).
+filebeat.inputs:
+  - type: filestream
+    id: kubernetes-container-logs
+    paths:
+      - /var/log/containers/*.log
+    parsers:
+      - container: ~              # strips the CRI / Docker envelope, joins split lines, sets `stream`
+      - ndjson:                   # JSON apps: decode the app's line into the event
+          target: ""              # app keys land at the event root (ECS-style keys fit the rules as-is)
+          overwrite_keys: true    # the app's `message` replaces the raw line
+          ignore_decoding_error: true
+    prospector:
+      scanner:
+        fingerprint.enabled: true
+        symlinks: true
+    file_identity.fingerprint: ~
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+processors:
+  # The rules and the rollup group by `service.name`. Apps that log JSON with ECS keys set it; for the
+  # rest use the container name (or a label, e.g. kubernetes.labels.app_kubernetes_io/name).
+  - copy_fields:
+      when.not.has_fields: ['service.name']
+      fields:
+        - from: kubernetes.container.name
+          to: service.name
+      fail_on_error: false
+      ignore_missing: true
+  - copy_fields:
+      fields:
+        - from: message
+          to: log.template
+      fail_on_error: false
+      ignore_missing: true
+  - replace:
+      fields:
+        - field: log.template
+          pattern: '\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}([.,]\d+)?(Z|[+-]\d{2}:?\d{2})?'
+          replacement: '<TS>'
+        - field: log.template
+          pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+          replacement: '<UUID>'
+        - field: log.template
+          pattern: '\b\d{1,3}(\.\d{1,3}){3}\b'
+          replacement: '<IP>'
+        - field: log.template
+          pattern: '\b(0x[0-9a-fA-F]+|[0-9a-fA-F]{12,})\b'
+          replacement: '<HEX>'
+        - field: log.template
+          pattern: '\b[-+]?\d+(\.\d+)?(ns|us|ms|s|KB|MB|GB|B|%)?\b'
+          replacement: '<NUM>'
+        - field: log.template
+          pattern: '"[^"]{0,200}"'
+          replacement: '<STR>'
+      ignore_missing: true
+      fail_on_error: false
+  - fingerprint:
+      fields: ["log.template"]
+      target_field: log.template_id
+      method: xxhash
+      ignore_missing: true
+  # Plain-text apps get no `log.level` here (Filebeat has no grok): the ingest-pipeline variant
+  # extracts it, or the error rules see only JSON apps.
+  # Optional: drop known noise before it costs ES storage.
+  # - drop_event:
+  #     when:
+  #       equals:
+  #         log.level: debug

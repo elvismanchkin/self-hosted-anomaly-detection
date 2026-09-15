@@ -1,0 +1,39 @@
+# End-to-end: our tagged input -> grafana/promql-anomaly-detection adaptive bands -> AnomalyDetected.
+# Needs the upstream rules fetched first (see poc/README.md):
+#   mkdir -p poc/prometheus/vendor && curl -sL https://github.com/grafana/promql-anomaly-detection/archive/refs/tags/v0.2.1.tar.gz \
+#     | tar xz -C poc/prometheus/vendor --strip-components=2 promql-anomaly-detection-0.2.1/rules/adaptive.yml promql-anomaly-detection-0.2.1/rules/robust.yml
+#   cd poc/prometheus/tests && promtool test rules e2e-adaptive.test.yml
+#
+# What it demonstrates: a 3x traffic step after 2 flat days fires AnomalyDetected ~7 min after onset
+# (5m rate ramp + `for: 5m`) and resolves ~17 min in, because the short-term band learns the new
+# level (the stddev of the spike hour widens the band). Adaptive bands are onset detectors; sustained
+# shifts must be caught by SLO burn-rate or static alerts.
+rule_files:
+  - ../anomaly-inputs.yml
+  - ../vendor/adaptive.yml
+
+evaluation_interval: 1m
+
+tests:
+  # checkout serves a flat 100 req/s for 2 days (t=0..2880m), then jumps to 300 req/s.
+  - interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+6000x2880 17298000+18000x40'
+    alert_rule_test:
+      - eval_time: 2870m
+        alertname: AnomalyDetected
+        exp_alerts: []
+      - eval_time: 2890m
+        alertname: AnomalyDetected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              anomaly_strategy: adaptive
+              anomaly_name: svc_requests
+              anomaly_type: requests
+              anomaly_select: "1"
+              service: checkout
+      - eval_time: 2910m
+        alertname: AnomalyDetected
+        exp_alerts: []

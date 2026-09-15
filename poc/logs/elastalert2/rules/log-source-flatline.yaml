@@ -1,0 +1,30 @@
+# A service that normally logs stops logging (crash, shipper broken, index block).
+# Silence is an anomaly that pure spike detection never catches.
+name: log-source-flatline
+type: flatline
+index: filebeat-*
+timestamp_field: "@timestamp"
+
+query_key: service.name
+use_terms_query: true
+terms_size: 500
+forget_keys: true     # stop alerting on services that were decommissioned
+
+timeframe:
+  minutes: 10
+threshold: 20         # fewer than 20 lines in 10 min for a service that previously logged
+
+realert:
+  minutes: 30
+
+alert:
+  - alertmanager
+alertmanager_hosts: ["http://alertmanager.internal:9093"]
+alertmanager_api_version: v2
+alertmanager_alertname: LogSourceFlatline
+alertmanager_labels:
+  source: elastalert
+  severity: warning
+  tier: "1"
+alertmanager_fields:
+  service: key          # flatline matches on silence carry the query_key value in `key`, not in service.name

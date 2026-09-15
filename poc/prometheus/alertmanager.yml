@@ -1,0 +1,67 @@
+# Alertmanager routing for the tiered setup. One place where Prometheus rules, grafana
+# promql-anomaly-detection and ElastAlert2 (alertmanager alerter, API v2) all land.
+# Principle: only Tier 0 (SLO burn rate) pages; anomaly findings go to chat/tickets, grouped per
+# service, and are muted while a paging alert for the same service is firing.
+# Validated with: amtool check-config (Alertmanager v0.34.0).
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: chat-platform
+  group_by: [alertname, service]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="page"']
+      receiver: oncall-pager
+      repeat_interval: 1h
+
+    # Bundles of anomaly findings per service also go to the (budget-capped) LLM triage hook.
+    # `continue: true` lets the same alert fall through to the chat route below.
+    # Matches every non-paging, non-meta alert: upstream `AnomalyDetected` carries no `tier` label.
+    - matchers: ['severity=~"warning|info"', 'tier!="meta"']
+      receiver: llm-triage
+      group_by: [service]
+      group_wait: 2m          # wait so related log/metric/trace anomalies arrive as one bundle
+      group_interval: 30m
+      repeat_interval: 12h
+      continue: true
+
+    - matchers: ['alertname="AnomalyDetected"']
+      receiver: chat-anomalies
+      group_by: [service, anomaly_name]
+      group_interval: 15m
+    - matchers: ['source="elastalert"']
+      receiver: chat-anomalies
+      group_by: [service]
+      group_interval: 15m
+    - matchers: ['tier=~"1|2"']
+      receiver: chat-anomalies
+      group_by: [service]
+      group_interval: 15m
+
+inhibit_rules:
+  # A paging SLO alert already explains the service's anomalies: don't pile on.
+  - source_matchers: ['severity="page"']
+    target_matchers: ['severity=~"warning|info"']
+    equal: [service]
+  # anomalyd (../../anomalyd): a service that stops logging drops every template too; keep the volume alert.
+  - source_matchers: ['alertname="AnomalydLogVolume"', 'direction="down"']
+    target_matchers: ['alertname="AnomalydLogTemplateRate"', 'direction="down"']
+    equal: [service]
+
+receivers:
+  - name: oncall-pager
+    webhook_configs:
+      - url: http://oncall-bridge.internal/alertmanager      # PagerDuty/Opsgenie/etc. receiver goes here
+  - name: chat-anomalies
+    webhook_configs:
+      - url: http://keep.internal/alerts/event/prometheus    # e.g. Keep OSS, or a chat bridge
+  - name: chat-platform
+    webhook_configs:
+      - url: http://chat-bridge.internal/platform
+  - name: llm-triage
+    webhook_configs:
+      - url: http://llm-triage.internal/bundle               # see docs/reference-architecture.md (T3)
+        max_alerts: 20

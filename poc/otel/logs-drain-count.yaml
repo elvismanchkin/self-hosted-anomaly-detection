@@ -1,0 +1,104 @@
+# OTel-native alternative to ../logs/drain3_exporter.py: a second reader on each node (DaemonSet).
+# Filebeat keeps shipping to Elasticsearch untouched (it allows only one output); this collector
+# tails the same container stdout files (/var/log/pods, what /var/log/containers links to; mount
+# /var/log read-only), derives a Drain template per line and exports only counts to Prometheus,
+# under the names ../prometheus/anomaly-inputs.yml reads (same as drain3_exporter.py):
+#   log_lines_total{service}
+#   log_template_lines_total{service, template_id}   template_id = the template text itself;
+#                                                     "other" = not annotated yet (warm-up)
+#   otelcol_processor_drain_clusters_active   (internal telemetry; growth = new templates)
+# Not produced here: log_templates_created_total / log_template_info, so LogNewTemplatesBurst
+# (../prometheus/anomaly-alerts.yml) needs drain3_exporter.py.
+# The `drain` processor is ALPHA in otelcol-contrib (since v0.151.0) - expect config churn.
+# Validated with: otelcol-contrib v0.160.0 `validate --config`, plus runtime runs on CRI files in the
+# /var/log/pods layout (40,003 lines, JSON + text apps, split lines): every line counted in 10 of 10 runs.
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/storage   # file offsets + Drain tree snapshots survive restarts
+    create_directory: true
+
+receivers:
+  file_log:                               # `filelog` is a deprecated alias in v0.160.0
+    include: [/var/log/pods/*/*/*.log]    # <namespace>_<pod>_<uid>/<container>/<restart>.log
+    exclude: [/var/log/pods/*/otel-collector/*.log]   # not our own output
+    include_file_path: true               # the container operator reads k8s metadata from the path
+    start_at: end
+    storage: file_storage
+    operators:
+      - type: container                   # CRI-O / containerd / Docker envelope (format auto-detected), joins
+                                          # runtime-split lines; sets resource k8s.namespace.name, k8s.pod.name,
+                                          # k8s.container.name
+      - type: json_parser                 # JSON-lines app logs -> structured body
+        parse_from: body
+        parse_to: body
+        on_error: send_quiet              # plain-text lines pass through unchanged
+      - type: copy                        # service = container name (the Filebeat variant falls back to it too)
+        from: resource["k8s.container.name"]
+        to: attributes["service"]
+      - type: remove                      # `count` emits one stream per resource (= per pod); the Prometheus
+        field: resource                   # exporter then keeps one pod's value per label set instead of the sum
+
+processors:
+  memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
+  drain:
+    tree_depth: 4
+    merge_threshold: 0.4
+    max_clusters: 2000                    # LRU cap per collector
+    body_field: message                   # template the message, not the whole JSON body
+    template_attribute: template_id       # default log.record.template; the Prometheus rules group by template_id
+    masking_rules:
+      - {name: uuid, pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'}
+      - {name: ip,   pattern: '\b\d{1,3}(\.\d{1,3}){3}\b'}
+      - {name: num,  pattern: '\b\d+(\.\d+)?(ms|s|KB|MB|GB|%)?\b'}
+    warmup_min_clusters: 20               # don't emit unstable templates right after start; counts clusters of
+                                          # ALL services on this collector - a host with fewer never leaves warm-up
+    storage: file_storage
+    save_interval: 5m
+  # `count` stamps each delta with the min/max record time, or time.Now() when records have none. The
+  # container operator sets record times, and parallel file readers deliver overlapping ranges, so
+  # delta_to_cumulative dropped up to 79 % of lines as out of order. Clearing the time makes `count` use now.
+  transform/untimed:
+    log_statements:
+      - set(log.time_unix_nano, 0)
+  # One sender into `count` (parallel readers otherwise interleave deltas), and one ResourceLogs per batch
+  # (`count` emits one point per ResourceLogs; groupbyattrs without keys merges identical resources).
+  batch: {}
+  groupbyattrs: {}
+  # The count connector emits DELTA sums; the Prometheus exporter would otherwise expose only the
+  # latest batch instead of a running counter. Convert before exporting.
+  delta_to_cumulative:
+    max_stale: 30m
+    max_streams: 20000
+
+connectors:
+  count:
+    logs:
+      log.lines:
+        description: Log lines per service.
+        attributes:
+          - key: service
+            default_value: unknown
+      log.template.lines:
+        description: Log lines per service and Drain template.
+        attributes:
+          - key: service
+            default_value: unknown
+          - key: template_id
+            default_value: other          # lines seen during warm-up; the band rules skip "other"
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9105
+    metric_expiration: 30m                # drop series for templates that stopped appearing
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    logs:
+      receivers: [file_log]
+      processors: [memory_limiter, drain, transform/untimed, batch, groupbyattrs]
+      exporters: [count]
+    metrics:
+      receivers: [count]
+      processors: [delta_to_cumulative]
+      exporters: [prometheus]
