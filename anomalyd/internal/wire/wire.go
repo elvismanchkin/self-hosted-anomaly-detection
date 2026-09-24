@@ -11,10 +11,17 @@ import (
 
 // Push is what an agent POSTs to /api/v1/templates (JSON, optionally gzip-encoded).
 // Counts are deltas since the previous push, per bucket; the server adds them up.
+//
+// Idempotency: an agent that sets AgentID and Seq retries a failed push with the same Seq (the
+// same batch, not re-merged counts). The server applies each (AgentID, Seq) at most once and
+// answers 204 for a duplicate. Seq starts at 1 and increases by one per new batch; pushes without
+// AgentID or with Seq 0 (older agents) are always applied.
 type Push struct {
-	Agent string `json:"agent"`
-	Step  int64  `json:"step"` // seconds per count bucket
-	Items []Item `json:"items"`
+	Agent   string `json:"agent"`
+	AgentID string `json:"agent_id,omitempty"` // stable per node (kept in the agent registry)
+	Seq     uint64 `json:"seq,omitempty"`
+	Step    int64  `json:"step"` // seconds per count bucket
+	Items   []Item `json:"items"`
 }
 
 type Item struct {
