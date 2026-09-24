@@ -70,3 +70,14 @@ func BenchmarkStdlibJSON(b *testing.B) {
 		_ = json.Unmarshal(line, &v)
 	}
 }
+
+func TestLevelLongNames(t *testing.T) {
+	for in, want := range map[string]string{
+		"emergency": "error", "EMERGENCY": "error", "information": "info", "Informational": "info",
+		"warning": "warn", "not-a-level-at-all": "",
+	} {
+		if got := Level(in); got != want {
+			t.Errorf("Level(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

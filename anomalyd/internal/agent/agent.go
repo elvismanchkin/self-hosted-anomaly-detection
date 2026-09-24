@@ -55,6 +55,12 @@ type countKey struct {
 	level string
 }
 
+// localCount is what one read() collected for a key, with the template text at read time.
+type localCount struct {
+	n    int64
+	tmpl string
+}
+
 type countVal struct {
 	svc     string
 	tmpl    string // last known text, used if the template is evicted before the push
@@ -241,7 +247,7 @@ func (a *Agent) read(tf *tailFile) int {
 	}
 	now := time.Now().Unix()
 	bucket := now / a.cfg.Step * a.cfg.Step
-	local := map[countKey]int64{}
+	local := map[countKey]*localCount{}
 	total := 0
 	for total < 8<<20 {
 		n, err := tf.f.Read(a.buf)
@@ -281,7 +287,7 @@ func (a *Agent) read(tf *tailFile) int {
 }
 
 // line mines one log line into the local counts.
-func (a *Agent) line(tf *tailFile, b []byte, local map[countKey]int64) {
+func (a *Agent) line(tf *tailFile, b []byte, local map[countKey]*localCount) {
 	b = bytes.TrimRight(b, "\r")
 	if len(b) == 0 {
 		return
@@ -327,13 +333,22 @@ func (a *Agent) line(tf *tailFile, b []byte, local map[countKey]int64) {
 	}
 	m, _ := a.pool.Get(svc)
 	m.Lock()
-	c, _ := m.AddLine(msg)
-	id := c.ID
+	c, ch := m.AddLine(msg)
+	k := countKey{m, c.ID, level}
+	lc := local[k]
+	if lc == nil {
+		lc = &localCount{}
+		local[k] = lc
+	}
+	// Keep the text now: the template may be evicted from the miner before the next push.
+	if lc.tmpl == "" || ch != drain.None {
+		lc.tmpl = c.Template()
+	}
 	m.Unlock()
-	local[countKey{m, id, level}]++
+	lc.n++
 }
 
-func (a *Agent) merge(local map[countKey]int64, bucket int64) {
+func (a *Agent) merge(local map[countKey]*localCount, bucket int64) {
 	var n int64
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -343,8 +358,9 @@ func (a *Agent) merge(local map[countKey]int64, bucket int64) {
 			v = &countVal{buckets: map[int64]int64{}}
 			a.counts[k] = v
 		}
-		v.buckets[bucket] += c
-		n += c
+		v.tmpl = c.tmpl
+		v.buckets[bucket] += c.n
+		n += c.n
 	}
 	a.lines.Add(n)
 }
@@ -389,17 +405,21 @@ func (a *Agent) push(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for k, v := range counts {
-		if len(a.counts) >= a.cfg.MaxBacklog {
-			a.dropped.Add(1)
-			continue
-		}
 		cur := a.counts[k]
 		if cur == nil {
+			// Only new keys grow the backlog; counts for keys already in it are always kept.
+			if len(a.counts) >= a.cfg.MaxBacklog {
+				a.dropped.Add(1)
+				continue
+			}
 			a.counts[k] = v
 			continue
 		}
 		for b, n := range v.buckets {
 			cur.buckets[b] += n
+		}
+		if cur.tmpl == "" {
+			cur.tmpl = v.tmpl
 		}
 	}
 	return err
