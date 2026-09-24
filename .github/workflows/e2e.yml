@@ -1,0 +1,31 @@
+name: e2e
+
+# The Docker end-to-end test (Prometheus + Alertmanager + anomalyd server and agent on synthetic
+# data) takes about 14 minutes, so it runs on demand and weekly rather than on every push.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: anomalyd/go.mod
+          cache-dependency-path: anomalyd/go.sum
+      - name: run.sh
+        run: anomalyd/test/e2e/run.sh
+      - name: upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-out
+          path: anomalyd/test/e2e/out/
+          if-no-files-found: ignore
