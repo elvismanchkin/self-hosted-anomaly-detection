@@ -14,6 +14,7 @@ import (
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/promrw"
+	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/series"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/wire"
 )
 
@@ -264,4 +265,33 @@ func countKind(s *Server, kind string) int {
 		}
 	}
 	return n
+}
+
+// A far-future log count must not move the series head: that would wipe its history ring and
+// push later real counts out of the window.
+func TestPushDropsFutureCounts(t *testing.T) {
+	s, _ := New(testConfig())
+	h := s.Handler()
+	now := time.Now().Unix() / 60 * 60
+	tmpl := "GET /health <NUM>"
+	push(t, h, wire.Item{Service: "gw", Template: tmpl, Level: "info", Counts: [][2]int64{{now - 120, 7}}})
+	push(t, h, wire.Item{Service: "gw", Template: tmpl, Level: "info",
+		Counts: [][2]int64{{now + 30*86400, 1}, {now - 60, 5}}})
+	var heads []int64
+	s.logs.ForEachShard(1, func(ss map[string]*series.Series) {
+		for _, sr := range ss {
+			heads = append(heads, sr.Head())
+			if v := sr.At(now/60 - 2); v != 7 {
+				t.Errorf("%s: bucket -2 = %v, want 7 (history kept)", sr.Key, v)
+			}
+		}
+	})
+	if len(heads) != 2 {
+		t.Fatalf("log series = %d, want 2", len(heads))
+	}
+	for _, hd := range heads {
+		if hd != now/60-1 {
+			t.Fatalf("head = %d, want %d: future count moved it", hd, now/60-1)
+		}
+	}
 }

@@ -186,7 +186,7 @@ func skipValue(s string, i int) (int, bool) {
 
 // Level normalises a level string to error, warn, info, debug or "" (unknown).
 func Level(v string) string {
-	if len(v) > 8 {
+	if len(v) > len("informational") {
 		return ""
 	}
 	switch strings.ToLower(v) {

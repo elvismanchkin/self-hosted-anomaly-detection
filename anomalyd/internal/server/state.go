@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
@@ -44,7 +45,9 @@ func (s *Server) save() error {
 		Templates: map[string][]clusterSnap{}, LogStart: s.logStart.Load()}
 	s.pool.Each(func(svc string, m *drain.Miner) {
 		m.Clusters(func(c *drain.Cluster) {
-			st.Templates[svc] = append(st.Templates[svc], clusterSnap{ID: c.ID, Tokens: c.Tokens, Size: c.Size})
+			// Copy: pushes generalise c.Tokens in place under the miner lock, which the encoder
+			// below no longer holds.
+			st.Templates[svc] = append(st.Templates[svc], clusterSnap{ID: c.ID, Tokens: slices.Clone(c.Tokens), Size: c.Size})
 		})
 	})
 	s.tmplMu.Lock()
@@ -105,12 +108,30 @@ func (s *Server) load() error {
 		s.tmplMu.Lock()
 		for i := len(cs) - 1; i >= 0; i-- { // oldest first so the LRU order survives
 			c := cs[i]
-			m.Restore(c.ID, c.Tokens, c.Size)
-			lv := c.Levels
-			if lv == nil {
-				lv = map[string]int64{}
+			id := c.ID
+			if used != svc || m.Get(id) != nil {
+				// Folded into the overflow miner (--max-services lowered since the snapshot):
+				// ids from different services collide, so let the miner assign or merge one.
+				cl, _ := m.Add(c.Tokens, c.Size)
+				id = cl.ID
+			} else {
+				m.Restore(id, c.Tokens, c.Size)
 			}
-			s.tmpl[tmplKey{used, c.ID}] = &tmplMeta{levels: lv, created: c.Created}
+			k := tmplKey{used, id}
+			if old := s.tmpl[k]; old != nil {
+				for l, n := range c.Levels {
+					old.levels[l] += n
+				}
+				if !c.Created.IsZero() && (old.created.IsZero() || c.Created.Before(old.created)) {
+					old.created = c.Created
+				}
+			} else {
+				lv := c.Levels
+				if lv == nil {
+					lv = map[string]int64{}
+				}
+				s.tmpl[k] = &tmplMeta{levels: lv, created: c.Created}
+			}
 			nt++
 		}
 		s.tmplMu.Unlock()

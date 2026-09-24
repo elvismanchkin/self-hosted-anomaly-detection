@@ -139,7 +139,9 @@ func (s *Server) evalSeries(sr *series.Series, last int64, scratch *[]float64, o
 		sr.LastEval = b
 		r, ok := detect.Score(sr, b, info.params, scratch, &info.cache)
 		if !ok {
+			// A gap breaks the run of consecutive anomalous buckets --for counts.
 			info.missing++
+			info.pending = 0
 			if info.firing && info.missing >= 3 {
 				info.firing, info.pending, info.normal = false, 0, 0
 				*out = append(*out, event{typ: evResolve, key: sr.Key})

@@ -53,6 +53,10 @@ type seriesInfo struct {
 	lastData int64 // bucket of the last non-zero sample (log series)
 }
 
+// maxFuture is how far ahead of the server clock a sample or log count may be dated; later ones
+// are dropped because they would move a series' head (and the metric data clock) forward.
+const maxFuture = 5 * time.Minute
+
 // AbsFloors maps anomaly_type label values to a minimum scale (value units), e.g. errors=0.001.
 var AbsFloors = map[string]float64{}
 
@@ -109,7 +113,7 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var newest int64
-	maxTS := time.Now().Add(5 * time.Minute).Unix()
+	maxTS := time.Now().Add(maxFuture).Unix()
 	err = promrw.Decode(b.raw, &b.ts, func(ts *promrw.TimeSeries) error {
 		b.key = b.key[:0]
 		for _, l := range ts.Labels {
@@ -296,6 +300,8 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	maxTS := now.Add(maxFuture).Unix()
+	valid := func(c [2]int64) bool { return c[1] > 0 && c[0] <= maxTS }
 	s.markLogStart(now)
 	for _, it := range p.Items {
 		if it.Template == "" {
@@ -303,12 +309,14 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		}
 		var total int64
 		for _, c := range it.Counts {
-			total += max(c[1], 0)
+			if valid(c) {
+				total += c[1]
+			}
 		}
 		level := logparse.Level(it.Level)
 		svc, id := s.globalTemplate(it.Service, it.Template, total, now)
 		for _, c := range it.Counts {
-			if c[1] > 0 {
+			if valid(c) {
 				s.addLog(svc, id, level, c[0], c[1])
 			}
 		}
