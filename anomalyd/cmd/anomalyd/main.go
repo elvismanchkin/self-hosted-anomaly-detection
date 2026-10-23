@@ -75,7 +75,7 @@ func runServer(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("server", flag.ExitOnError)
 	c := server.Config{}
 	var am, match listFlag
-	var ignore, floors string
+	var ignore, floors, sigFile string
 	fs.StringVar(&c.Listen, "listen", ":9400", "HTTP listen address")
 	fs.DurationVar(&c.Step, "step", 5*time.Minute, "bucket width for all series")
 	fs.DurationVar(&c.EvalInterval, "eval-interval", 30*time.Second, "how often complete buckets are scored")
@@ -92,6 +92,8 @@ func runServer(ctx context.Context, args []string) error {
 	fs.StringVar(&ignore, "ignore-labels", "prometheus,prometheus_replica", "labels dropped on ingest (Prometheus external labels)")
 	fs.StringVar(&c.BackfillURL, "backfill-url", "", "Prometheus URL to load history from at start-up")
 	fs.Var(&match, "backfill-match", "series selector to backfill (repeatable), e.g. '{__name__=~\"anomaly:.+\"}'")
+	fs.IntVar(&c.AbsentBuckets, "absent-buckets", 3, "missing buckets before a metric series is reported absent (0 = off)")
+	fs.DurationVar(&c.AbsentTTL, "absent-ttl", 24*time.Hour, "an absent-series finding resolves after this (0 = only when data returns)")
 	fs.IntVar(&c.MaxLogSeries, "max-log-series", 50000, "cap on log template + volume series")
 	fs.DurationVar(&c.LogSeason, "log-season", 24*time.Hour, "seasonality of log series")
 	fs.IntVar(&c.LogSeasons, "log-seasons", 3, "seasons of log history in the seasonal median")
@@ -100,7 +102,8 @@ func runServer(ctx context.Context, args []string) error {
 	fs.DurationVar(&c.NoveltyWarmup, "novelty-warmup", time.Hour, "no new-template findings until logs have flowed this long")
 	fs.Int64Var(&c.NoveltyMin, "novelty-min-lines", 5, "lines a new template needs before it is reported")
 	fs.DurationVar(&c.NoveltyWindow, "novelty-window", 15*time.Minute, "time a new template has to reach --novelty-min-lines")
-	fs.DurationVar(&c.NoveltyTTL, "novelty-ttl", time.Hour, "how long a new-template finding stays firing")
+	fs.DurationVar(&c.NoveltyTTL, "novelty-ttl", time.Hour, "how long a new-template or signature finding stays firing")
+	fs.StringVar(&sigFile, "signature-file", "", "known-bad log signatures: one 'name: RE2 regex' per line, matched against masked templates")
 	fs.IntVar(&c.MaxServices, "max-services", 1000, "services with their own template miner")
 	fs.StringVar(&c.MessageField, "message-field", "message", "JSON field with the log message (/api/v1/logs)")
 	fs.StringVar(&c.ServiceField, "service-field", "service.name", "JSON field with the service")
@@ -121,6 +124,12 @@ func runServer(ctx context.Context, args []string) error {
 				return fmt.Errorf("--abs-floor %q: %w", kv, err)
 			}
 			server.AbsFloors[k] = f
+		}
+	}
+	if sigFile != "" {
+		var err error
+		if c.Signatures, err = server.LoadSignatures(sigFile); err != nil {
+			return fmt.Errorf("--signature-file %s: %w", sigFile, err)
 		}
 	}
 	s, err := server.New(c)

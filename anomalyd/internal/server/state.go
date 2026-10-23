@@ -4,10 +4,12 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
@@ -27,11 +29,17 @@ type stateFile struct {
 	Templates map[string][]clusterSnap
 	LogStart  int64
 	Findings  []findingSnap // firing findings, so a restart neither drops nor re-dates them
+	SigFired  []sigFiredSnap
 }
 
 type findingSnap struct {
 	Key     string
 	Finding Finding
+}
+
+type sigFiredSnap struct {
+	Service, Signature string
+	At                 time.Time
 }
 
 type clusterSnap struct {
@@ -53,6 +61,11 @@ func (s *Server) save() error {
 	s.findMu.Lock()
 	for k, f := range s.active {
 		st.Findings = append(st.Findings, findingSnap{Key: k, Finding: *f})
+	}
+	for k, at := range s.sigFired {
+		if t0.Sub(at) < sigEvery {
+			st.SigFired = append(st.SigFired, sigFiredSnap{k.service, k.signature, at})
+		}
 	}
 	s.findMu.Unlock()
 	s.pool.Each(func(svc string, m *drain.Miner) {
@@ -146,6 +159,12 @@ func (s *Server) load() error {
 			}
 			nt++
 		}
+		// Keyword levels and signatures are derived from the text, so they follow today's rules.
+		m.Clusters(func(c *drain.Cluster) {
+			if tm := s.tmpl[tmplKey{used, c.ID}]; tm != nil {
+				s.classifyLocked(tm, c.Template())
+			}
+		})
 		s.tmplMu.Unlock()
 		m.Unlock()
 	}
@@ -153,13 +172,30 @@ func (s *Server) load() error {
 	if st.Step == s.step {
 		np = s.prom.Restore(st.Prom, s.promInfo)
 		nl = s.logs.Restore(st.Logs, s.logInfo)
-		// lastData is not in the snapshot; without it gc would drop every restored log series.
+		// lastData is not in the snapshot; without it gc would drop every restored series. Metric
+		// heads follow the data clock, so look for the newest bucket with a value.
+		s.prom.ForEachShard(1, func(ss map[string]*series.Series) {
+			for _, sr := range ss {
+				if h := sr.Head(); h != math.MinInt64 {
+					b := h - 1
+					for b > h-int64(s.prom.Capacity()) && math.IsNaN(sr.At(b)) {
+						b--
+					}
+					sr.Info.(*seriesInfo).lastData = b
+				}
+			}
+		})
 		s.logs.ForEachShard(1, func(ss map[string]*series.Series) {
 			for _, sr := range ss {
 				sr.Info.(*seriesInfo).lastData = sr.Head()
 			}
 		})
 	}
+	s.findMu.Lock()
+	for _, sf := range st.SigFired {
+		s.sigFired[sigKey{sf.Service, sf.Signature}] = sf.At
+	}
+	s.findMu.Unlock()
 	nf := s.restoreFindings(st.Findings)
 	if st.LogStart > 0 {
 		// Templates are known already, so novelty needs no second warm-up.
@@ -171,7 +207,8 @@ func (s *Server) load() error {
 }
 
 // restoreFindings re-activates firing findings whose series (or new template) was restored, so
-// they keep their start time and resolve through the normal path.
+// they keep their start time and resolve through the normal path. A signature finding needs no
+// series; it resolves by its start time.
 func (s *Server) restoreFindings(snaps []findingSnap) int {
 	s.findMu.Lock()
 	defer s.findMu.Unlock()
@@ -188,6 +225,20 @@ func (s *Server) restoreFindings(snaps []findingSnap) int {
 				m.novel, m.fired, ok = true, f.StartsAt, true // resolves after --novelty-ttl
 			}
 			s.tmplMu.Unlock()
+		case kindLogSignature:
+			sk := sigKey{f.Labels["service"], f.Labels["signature"]}
+			if f.StartsAt.After(s.sigFired[sk]) {
+				s.sigFired[sk] = f.StartsAt
+			}
+			ok = true
+		case kindMetricAbsent:
+			if s.cfg.AbsentBuckets > 0 { // otherwise nothing would resolve it
+				since := f.Bucket.Unix() / s.step
+				ok = s.prom.Lookup(strings.TrimPrefix(fs.Key, absentPrefix), func(sr *series.Series) {
+					info := sr.Info.(*seriesInfo)
+					info.absent, info.absentSince = absFiring, since
+				})
+			}
 		case kindMetric, kindLogTemplate, kindLogVolume:
 			st := s.logs
 			if f.Kind == kindMetric {

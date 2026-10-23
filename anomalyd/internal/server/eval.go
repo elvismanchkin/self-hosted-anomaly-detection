@@ -84,6 +84,15 @@ type event struct {
 
 const maxCatchUp = 3 // buckets scored per series per evaluation after a gap
 
+// seriesInfo.absent states.
+const (
+	absNone    = iota
+	absFiring  // AnomalydSeriesAbsent is firing
+	absExpired // resolved after --absent-ttl; quiet until data returns
+)
+
+const absentPrefix = "absent\xff" // finding key prefix before the series key
+
 // Evaluate scores every complete bucket not yet scored and updates findings.
 func (s *Server) Evaluate(now time.Time) {
 	t0 := time.Now()
@@ -138,6 +147,9 @@ func (s *Server) evalSeries(sr *series.Series, last int64, scratch *[]float64, o
 	var n int64
 	for b := start; b <= last; b++ {
 		sr.LastEval = b
+		if info.kind == kindMetric && info.dir == 0 && s.cfg.AbsentBuckets > 0 {
+			s.trackAbsent(sr, info, b, out)
+		}
 		r, ok := detect.Score(sr, b, info.params, scratch, &info.cache)
 		if !ok {
 			// A gap breaks the run of consecutive anomalous buckets --for counts.
@@ -180,6 +192,38 @@ func (s *Server) evalSeries(sr *series.Series, last int64, scratch *[]float64, o
 		}
 	}
 	return n
+}
+
+// trackAbsent fires AnomalydSeriesAbsent for a metric series whose drop matters (both
+// directions count) once it misses AbsentBuckets buckets in a row while other series still
+// arrive, if its last expected value was above the scale floor. A bucket that no series reached
+// neither counts nor breaks the run. It resolves when data returns or after AbsentTTL.
+func (s *Server) trackAbsent(sr *series.Series, info *seriesInfo, b int64, out *[]event) {
+	key := absentPrefix + sr.Key
+	if !math.IsNaN(sr.At(b)) {
+		if info.absent == absFiring {
+			*out = append(*out, event{typ: evResolve, key: key})
+		}
+		info.absent, info.absentRun = absNone, 0
+		return
+	}
+	switch {
+	case info.absent == absFiring:
+		if s.absentTTL > 0 && b-info.absentSince >= s.absentTTL {
+			info.absent = absExpired
+			*out = append(*out, event{typ: evResolve, key: key})
+		}
+	case info.absent == absNone && s.seen(b):
+		if info.absentRun == 0 {
+			info.absentSince = b
+		}
+		info.absentRun++
+		if info.absentRun >= s.cfg.AbsentBuckets && info.lastOK && info.last.Expected > info.params.AbsFloor {
+			info.absent = absFiring
+			*out = append(*out, event{typ: evFire, key: key, kind: kindMetricAbsent, labels: sr.Labels,
+				r: info.last, bucket: info.absentSince, dir: -1})
+		}
+	}
 }
 
 func anomalous(r detect.Result, info *seriesInfo, thr float64) bool {
@@ -247,12 +291,15 @@ func (s *Server) newFinding(ev event, now time.Time) *Finding {
 	case kindMetric:
 		f.Labels["alertname"], f.Labels["tier"], f.Labels["severity"] = "AnomalydMetricAnomaly", "2", "warning"
 		f.Labels["metric"] = name
+	case kindMetricAbsent:
+		f.Labels["alertname"], f.Labels["tier"], f.Labels["severity"] = "AnomalydSeriesAbsent", "2", "warning"
+		f.Labels["metric"] = name
 	case kindLogTemplate:
 		id, _ := strconv.Atoi(ev.labels.Get("template_id"))
 		svc := ev.labels.Get("service")
-		level := s.templateLevel(svc, id)
+		level, inferred := s.templateLevel(svc, id)
 		f.Labels["alertname"], f.Labels["tier"], f.Labels["level"] = "AnomalydLogTemplateRate", "2", level
-		f.Labels["severity"] = severity(level, dir)
+		f.Labels["severity"] = templateSeverity(f, level, inferred, dir)
 		f.Annotations["template"] = s.templateText(svc, id)
 	case kindLogVolume:
 		level := ev.labels.Get("level")
@@ -263,6 +310,17 @@ func (s *Server) newFinding(ev event, now time.Time) *Finding {
 		}
 	}
 	s.fill(f, ev)
+	if ev.kind == kindMetricAbsent {
+		f.ID = "absent(" + f.ID + ")"
+		f.Score, f.Observed = 0, 0
+		f.Annotations["summary"] = fmt.Sprintf("%s %s: no samples since %s (expected %s)",
+			f.Labels["service"], name, f.Bucket.Format(time.RFC3339), fmtNum(ev.r.Expected))
+		d := "The series stopped arriving while other remote-write series kept coming. It resolves when data returns"
+		if s.cfg.AbsentTTL > 0 {
+			d += fmt.Sprintf(", or %s after it stopped", s.cfg.AbsentTTL)
+		}
+		f.Annotations["description"] = d + "."
+	}
 	return f
 }
 
@@ -271,6 +329,16 @@ func severity(level, dir string) string {
 		return "warning"
 	}
 	return "info"
+}
+
+// templateSeverity rates a template finding by its observed level or, when its lines carry no
+// level (or info), by keywords in its text: an OutOfMemoryError on raw stdout is worth a look.
+func templateSeverity(f *Finding, level, inferred, dir string) string {
+	if inferred != "" && (level == "" || level == "unknown" || level == "info") {
+		f.Annotations["severity_source"] = "template keywords"
+		level = inferred
+	}
+	return severity(level, dir)
 }
 
 func (s *Server) fill(f *Finding, ev event) {
@@ -294,33 +362,45 @@ func (s *Server) fill(f *Finding, ev event) {
 func fmtNum(v float64) string { return strconv.FormatFloat(round(v), 'g', 6, 64) }
 func round(v float64) float64 { return math.Round(v*1000) / 1000 }
 
-func (s *Server) templateLevel(svc string, id int) string {
+// templateLevel returns a template's dominant observed level and its keyword level.
+func (s *Server) templateLevel(svc string, id int) (string, string) {
 	s.tmplMu.Lock()
 	defer s.tmplMu.Unlock()
 	if m := s.tmpl[tmplKey{svc, id}]; m != nil {
-		return m.level()
+		return m.level(), m.inferred
 	}
-	return ""
+	return "", ""
 }
 
 // evalNovelty fires a finding for templates first seen after warm-up once they reach
-// NoveltyMin lines within NoveltyWindow; one-off lines below that are forgotten.
+// NoveltyMin lines within NoveltyWindow; one-off lines below that are forgotten. It also fires
+// signature findings (see evalSignaturesLocked).
 func (s *Server) evalNovelty(now time.Time) {
 	type cand struct {
-		k     tmplKey
-		level string
-		count int64
+		k               tmplKey
+		level, inferred string
+		count           int64
 	}
 	var fire, resolve []cand
+	sigs := map[sigKey]sigCand{}
 	s.tmplMu.Lock()
 	for k, m := range s.tmpl {
+		if m.sigLines > 0 {
+			for _, i := range m.sigs {
+				sk := sigKey{k.service, s.cfg.Signatures[i].Name}
+				if c, ok := sigs[sk]; !ok || m.sigLines > c.lines || m.sigLines == c.lines && k.id < c.id {
+					sigs[sk] = sigCand{k.id, i, m.sigLines}
+				}
+			}
+			m.sigLines = 0
+		}
 		if !m.novel {
 			continue
 		}
 		switch {
 		case m.fired.IsZero() && m.count >= s.cfg.NoveltyMin:
 			m.fired = now
-			fire = append(fire, cand{k, m.level(), m.count})
+			fire = append(fire, cand{k, m.level(), m.inferred, m.count})
 		case m.fired.IsZero() && now.Sub(m.created) > s.cfg.NoveltyWindow:
 			m.novel = false
 		case !m.fired.IsZero() && now.Sub(m.fired) > s.cfg.NoveltyTTL:
@@ -341,11 +421,12 @@ func (s *Server) evalNovelty(now time.Time) {
 			Bucket: now.UTC().Truncate(time.Second), Observed: float64(c.count),
 			Labels: map[string]string{"alertname": "AnomalydLogNewTemplate", "source": "anomalyd", "tier": "1",
 				"anomaly_kind": kindLogNew, "service": c.k.service, "template_id": strconv.Itoa(c.k.id),
-				"level": c.level, "severity": severity(c.level, "up")},
+				"level": c.level},
 			Annotations: map[string]string{"template": texts[i],
 				"summary": fmt.Sprintf("%s: new log template (%d lines since first seen)", c.k.service, c.count),
 				"description": fmt.Sprintf("First seen after the %s warm-up; masked template: %s",
 					s.cfg.NoveltyWarmup, texts[i])}}
+		f.Labels["severity"] = templateSeverity(f, c.level, c.inferred, "up")
 		s.active[id] = f
 		slog.Info("finding", "id", f.ID, "alertname", "AnomalydLogNewTemplate",
 			"service", c.k.service, "template", texts[i], "lines", c.count)
@@ -355,10 +436,51 @@ func (s *Server) evalNovelty(now time.Time) {
 			s.resolveLocked(f, now)
 		}
 	}
+	s.evalSignaturesLocked(sigs, now)
 }
 
-// gc drops series that saw no data for a full ring (metrics) or a full season (log series), and
-// template metadata whose template the miner has evicted.
+// sigEvery is the minimum time between two signature findings for one service and signature.
+const sigEvery = 24 * time.Hour
+
+type sigCand struct {
+	id, sig int // template id, index into cfg.Signatures
+	lines   int64
+}
+
+// evalSignaturesLocked fires AnomalydLogSignature when a template matching a signature got lines,
+// at most once per service and signature per sigEvery, whatever --novelty-min-lines says. It
+// resolves after --novelty-ttl. Callers hold findMu.
+func (s *Server) evalSignaturesLocked(sigs map[sigKey]sigCand, now time.Time) {
+	for sk, c := range sigs {
+		key := "sig\xff" + sk.service + "\xff" + sk.signature
+		if s.active[key] != nil || now.Sub(s.sigFired[sk]) < sigEvery {
+			continue
+		}
+		s.sigFired[sk] = now
+		text, re := s.templateText(sk.service, c.id), s.cfg.Signatures[c.sig].Re.String()
+		f := &Finding{ID: fmt.Sprintf("log_signature{service=%q,signature=%q,template_id=\"%d\"}", sk.service, sk.signature, c.id),
+			key: key, Kind: kindLogSignature, State: "firing", StartsAt: now, UpdatedAt: now,
+			Bucket: now.UTC().Truncate(time.Second), Observed: float64(c.lines),
+			Labels: map[string]string{"alertname": "AnomalydLogSignature", "source": "anomalyd", "tier": "1",
+				"severity": "warning", "anomaly_kind": kindLogSignature, "service": sk.service,
+				"template_id": strconv.Itoa(c.id), "signature": sk.signature},
+			Annotations: map[string]string{"template": text,
+				"summary": fmt.Sprintf("%s: known-bad log signature %s (%d lines)", sk.service, sk.signature, c.lines),
+				"description": fmt.Sprintf("The template matches signature %s (%s); at most one finding per service "+
+					"and signature per %s. Masked template: %s", sk.signature, re, sigEvery, text)}}
+		s.active[key] = f
+		slog.Info("finding", "id", f.ID, "alertname", "AnomalydLogSignature", "service", sk.service,
+			"signature", sk.signature, "template", text, "lines", c.lines)
+	}
+	for _, f := range s.active {
+		if f.Kind == kindLogSignature && now.Sub(f.StartsAt) > s.cfg.NoveltyTTL {
+			s.resolveLocked(f, now)
+		}
+	}
+}
+
+// gc drops series that saw no data for a full ring (metrics, unless AnomalydSeriesAbsent fires)
+// or a full season (log series), and template metadata whose template the miner has evicted.
 func (s *Server) gc(promOpen, logOpen int64) {
 	s.gcRuns++
 	if s.gcRuns%100 == 0 {
@@ -375,7 +497,11 @@ func (s *Server) gc(promOpen, logOpen int64) {
 		s.tmplMu.Unlock()
 	}
 	pc := int64(s.prom.Capacity())
-	s.prom.Delete(func(sr *series.Series) bool { return sr.Head() < promOpen-pc })
+	// Not Head: Evaluate advances every metric head to the data clock.
+	s.prom.Delete(func(sr *series.Series) bool {
+		info := sr.Info.(*seriesInfo)
+		return info.lastData < promOpen-pc && info.absent != absFiring
+	})
 	season := int64(s.logP.Season)
 	s.logs.Delete(func(sr *series.Series) bool {
 		return sr.Info.(*seriesInfo).lastData < logOpen-season && !sr.Info.(*seriesInfo).firing

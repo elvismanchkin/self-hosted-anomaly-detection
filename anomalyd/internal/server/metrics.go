@@ -67,15 +67,22 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
+	kinds := []string{kindMetric, kindMetricAbsent, kindLogTemplate, kindLogVolume, kindLogNew, kindLogSignature}
+	byKind := map[string]int{}
 	s.findMu.Lock()
-	byKind := map[string]int{kindMetric: 0, kindLogTemplate: 0, kindLogVolume: 0, kindLogNew: 0}
 	for _, f := range s.active {
 		byKind[f.Kind]++
 	}
 	s.findMu.Unlock()
 	e.Family("anomalyd_findings_active", "Findings currently firing.", "gauge")
-	for _, k := range []string{kindMetric, kindLogTemplate, kindLogVolume, kindLogNew} {
+	for _, k := range kinds {
 		e.Sample("anomalyd_findings_active", [][2]string{{"kind", k}}, float64(byKind[k]))
+	}
+	if len(s.cfg.Signatures) > 0 {
+		e.Family("anomalyd_signature_matches_total", "Log lines whose template matches a --signature-file entry.", "counter")
+		for i, sg := range s.cfg.Signatures {
+			e.Sample("anomalyd_signature_matches_total", [][2]string{{"signature", sg.Name}}, float64(s.sigMatches[i].Load()))
+		}
 	}
 	e.Family("anomalyd_series", "Series held in memory.", "gauge")
 	e.Sample("anomalyd_series", [][2]string{{"source", "remote_write"}}, float64(s.prom.Len()))

@@ -38,6 +38,8 @@ type Config struct {
 	IgnoreLabels  []string // dropped on ingest, e.g. external labels added by Prometheus
 	BackfillURL   string
 	BackfillMatch []string
+	AbsentBuckets int           // missing buckets before AnomalydSeriesAbsent; 0 = off
+	AbsentTTL     time.Duration // an absent finding resolves after this; 0 = only when data returns
 
 	// Log template counts (from agents or /api/v1/logs).
 	MaxLogSeries   int
@@ -56,6 +58,7 @@ type Config struct {
 	LevelField     string
 	ExportTemplate bool // export anomalyd_score for every log-template series
 	ExportBands    bool
+	Signatures     []Signature // known-bad templates (--signature-file)
 
 	AlertmanagerURLs []string
 	ExternalURL      string
@@ -71,8 +74,10 @@ type Server struct {
 	logP       detect.Params
 	pool       *drain.Pool
 	ignore     map[string]bool
-	promClock  atomic.Int64 // newest remote-write sample, unix seconds
-	logStart   atomic.Int64 // first log data, unix seconds (0 = none yet)
+	promClock  atomic.Int64   // newest remote-write sample, unix seconds
+	promSeen   []atomic.Int64 // recent buckets that got remote-write data, at b % len
+	absentTTL  int64          // buckets
+	logStart   atomic.Int64   // first log data, unix seconds (0 = none yet)
 	started    time.Time
 	client     *http.Client
 
@@ -82,10 +87,12 @@ type Server struct {
 
 	findMu   sync.Mutex
 	active   map[string]*Finding
-	resolved []*Finding // newest first, capped
-	gcRuns   int        // evaluation goroutine only
+	resolved []*Finding           // newest first, capped
+	sigFired map[sigKey]time.Time // last AnomalydLogSignature per service and signature
+	gcRuns   int                  // evaluation goroutine only
 
-	stats stats
+	stats      stats
+	sigMatches []atomic.Int64 // lines per signature
 }
 
 type stats struct {
@@ -101,12 +108,17 @@ type tmplKey struct {
 	id      int
 }
 
+type sigKey struct{ service, signature string }
+
 type tmplMeta struct {
-	levels  map[string]int64
-	created time.Time
-	novel   bool  // created after warm-up: novelty candidate
-	count   int64 // lines since creation (for novelty)
-	fired   time.Time
+	levels   map[string]int64
+	created  time.Time
+	novel    bool  // created after warm-up: novelty candidate
+	count    int64 // lines since creation (for novelty)
+	fired    time.Time
+	inferred string // level from template keywords; derived from the text, not saved
+	sigs     []int  // indices of matching cfg.Signatures; derived, not saved
+	sigLines int64  // lines for sigs since the last evaluation
 }
 
 func (m *tmplMeta) level() string {
@@ -127,7 +139,10 @@ func New(cfg Config) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, step: int64(cfg.Step / time.Second), started: time.Now(),
 		client: &http.Client{Timeout: 10 * time.Second}, ignore: map[string]bool{},
-		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, active: map[string]*Finding{}}
+		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, active: map[string]*Finding{},
+		sigFired: map[sigKey]time.Time{}, sigMatches: make([]atomic.Int64, len(cfg.Signatures)),
+		promSeen: make([]atomic.Int64, buckets(cfg.Grace, cfg.Step)+maxCatchUp+64)}
+	s.absentTTL = int64(buckets(cfg.AbsentTTL, cfg.Step))
 	for _, l := range cfg.IgnoreLabels {
 		if l = strings.TrimSpace(l); l != "" {
 			s.ignore[l] = true
