@@ -51,6 +51,10 @@ func Sorted(ls Labels) Labels {
 
 const noHead = math.MinInt64
 
+// lateWin is how many recently closed buckets keep their sample count, so that a late sample
+// (data clock moved on before every remote-write shard arrived) joins the bucket mean correctly.
+const lateWin = 8
+
 // Series is one ring buffer. All access goes through the owning shard's lock.
 type Series struct {
 	Key      string
@@ -63,6 +67,7 @@ type Series struct {
 	head int64 // open bucket, not yet final
 	acc  float64
 	cnt  uint32
+	late [lateWin]uint32 // sample counts of buckets [head-lateWin, head), indexed by b%lateWin
 }
 
 func newSeries(key string, ls Labels, agg Agg, capacity int) *Series {
@@ -100,13 +105,23 @@ func (s *Series) Add(b int64, v float64) {
 	case b > s.head-int64(len(s.vals)): // late sample for a closed bucket
 		i := b % int64(len(s.vals))
 		old := s.vals[i]
+		recent := b >= s.head-lateWin
 		switch {
 		case old != old: // NaN
 			s.vals[i] = float32(v)
+			if recent {
+				s.late[b%lateWin] = 1
+			}
 		case s.Agg == Sum:
 			s.vals[i] = old + float32(v)
+		case recent:
+			// Count-weighted mean; a count of 0 here means unknown (e.g. an older snapshot).
+			k := float64(max(s.late[b%lateWin], 1))
+			s.vals[i] = float32((float64(old)*k + v) / (k + 1))
+			s.late[b%lateWin] = uint32(k) + 1
 		default:
-			s.vals[i] = (old + float32(v)) / 2
+			// Older closed bucket with a value but no known count (e.g. backfill overlapping live
+			// data): keep the value we have rather than skew it.
 		}
 	}
 }
@@ -118,6 +133,10 @@ func (s *Series) Advance(b int64) {
 	}
 	n := int64(len(s.vals))
 	s.vals[s.head%n] = float32(s.final())
+	s.late[s.head%lateWin] = s.cnt
+	for x := max(s.head+1, b-lateWin); x < b; x++ {
+		s.late[x%lateWin] = 0
+	}
 	gap := float32(math.NaN())
 	if s.Agg == Sum {
 		gap = 0
@@ -209,6 +228,19 @@ func (st *Store) UpdateBytes(key []byte, mk func() (Labels, Agg, any), fn func(*
 	return true
 }
 
+// Lookup runs fn on the series for key under its shard lock; it returns false if there is none.
+func (st *Store) Lookup(key string, fn func(*Series)) bool {
+	sh := &st.sh[maphash.String(st.seed, key)%shards]
+	sh.Lock()
+	defer sh.Unlock()
+	s := sh.m[key]
+	if s == nil {
+		return false
+	}
+	fn(s)
+	return true
+}
+
 // ForEachShard calls fn for each shard's series with the shard locked; shards run on
 // `workers` goroutines.
 func (st *Store) ForEachShard(workers int, fn func(ss map[string]*Series)) {
@@ -261,6 +293,7 @@ type Snap struct {
 	Head     int64
 	Acc      float64
 	Cnt      uint32
+	Late     [lateWin]uint32
 }
 
 func (st *Store) Snapshot() []Snap {
@@ -269,7 +302,7 @@ func (st *Store) Snapshot() []Snap {
 	st.ForEachShard(1, func(ss map[string]*Series) {
 		for _, s := range ss {
 			sn := Snap{Key: s.Key, Labels: s.Labels, Agg: s.Agg, LastEval: s.LastEval,
-				Vals: append([]float32(nil), s.vals...), Head: s.head, Acc: s.acc, Cnt: s.cnt}
+				Vals: append([]float32(nil), s.vals...), Head: s.head, Acc: s.acc, Cnt: s.cnt, Late: s.late}
 			mu.Lock()
 			out = append(out, sn)
 			mu.Unlock()
@@ -287,7 +320,7 @@ func (st *Store) Restore(snaps []Snap, info func(Labels) any) (loaded int) {
 		st.Update(sn.Key, func() (Labels, Agg, any) { return sn.Labels, sn.Agg, info(sn.Labels) },
 			func(s *Series) {
 				copy(s.vals, sn.Vals)
-				s.head, s.acc, s.cnt, s.LastEval = sn.Head, sn.Acc, sn.Cnt, sn.LastEval
+				s.head, s.acc, s.cnt, s.late, s.LastEval = sn.Head, sn.Acc, sn.Cnt, sn.Late, sn.LastEval
 				loaded++
 			})
 	}

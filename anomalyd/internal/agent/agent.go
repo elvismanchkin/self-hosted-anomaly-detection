@@ -143,10 +143,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.pollAll()
 			return a.push(context.Background())
 		case <-poll.C:
-			for a.pollAll() > 0 { // keep reading while there is a backlog
-				if ctx.Err() != nil {
-					break
-				}
+			// Keep reading while there is a backlog, but yield after one flush interval so a
+			// sustained backlog cannot hold back pushes (late counts land in buckets the server
+			// has already scored).
+			until := time.Now().Add(a.cfg.Flush)
+			for a.pollAll() > 0 && ctx.Err() == nil && time.Now().Before(until) {
 			}
 		case <-rescan.C:
 			a.scan(false)
@@ -235,6 +236,7 @@ func (a *Agent) pollAll() int {
 		case fi.Size() < tf.off: // truncated in place (copytruncate)
 			tf.f.Seek(0, io.SeekStart)
 			tf.off, tf.partial = 0, tf.partial[:0]
+			tf.cpart[0], tf.cpart[1] = tf.cpart[0][:0], tf.cpart[1][:0]
 		}
 	}
 	return total

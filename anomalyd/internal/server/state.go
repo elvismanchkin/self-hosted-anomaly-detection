@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
@@ -25,6 +26,12 @@ type stateFile struct {
 	Logs      []series.Snap
 	Templates map[string][]clusterSnap
 	LogStart  int64
+	Findings  []findingSnap // firing findings, so a restart neither drops nor re-dates them
+}
+
+type findingSnap struct {
+	Key     string
+	Finding Finding
 }
 
 type clusterSnap struct {
@@ -43,6 +50,11 @@ func (s *Server) save() error {
 	st := stateFile{Version: stateVersion, SavedAt: t0, Step: s.step, PromCap: s.prom.Capacity(),
 		LogCap: s.logs.Capacity(), Prom: s.prom.Snapshot(), Logs: s.logs.Snapshot(),
 		Templates: map[string][]clusterSnap{}, LogStart: s.logStart.Load()}
+	s.findMu.Lock()
+	for k, f := range s.active {
+		st.Findings = append(st.Findings, findingSnap{Key: k, Finding: *f})
+	}
+	s.findMu.Unlock()
 	s.pool.Each(func(svc string, m *drain.Miner) {
 		m.Clusters(func(c *drain.Cluster) {
 			// Copy: pushes generalise c.Tokens in place under the miner lock, which the encoder
@@ -148,10 +160,45 @@ func (s *Server) load() error {
 			}
 		})
 	}
+	nf := s.restoreFindings(st.Findings)
 	if st.LogStart > 0 {
 		// Templates are known already, so novelty needs no second warm-up.
 		s.logStart.Store(min(st.LogStart, time.Now().Add(-s.cfg.NoveltyWarmup).Unix()))
 	}
-	slog.Info("state loaded", "saved_at", st.SavedAt, "templates", nt, "metric_series", np, "log_series", nl)
+	slog.Info("state loaded", "saved_at", st.SavedAt, "templates", nt, "metric_series", np, "log_series", nl,
+		"findings", nf)
 	return nil
+}
+
+// restoreFindings re-activates firing findings whose series (or new template) was restored, so
+// they keep their start time and resolve through the normal path.
+func (s *Server) restoreFindings(snaps []findingSnap) int {
+	s.findMu.Lock()
+	defer s.findMu.Unlock()
+	n := 0
+	for _, fs := range snaps {
+		f := fs.Finding
+		f.key = fs.Key
+		ok := false
+		switch f.Kind {
+		case kindLogNew:
+			id, err := strconv.Atoi(f.Labels["template_id"])
+			s.tmplMu.Lock()
+			if m := s.tmpl[tmplKey{f.Labels["service"], id}]; err == nil && m != nil {
+				m.novel, m.fired, ok = true, f.StartsAt, true // resolves after --novelty-ttl
+			}
+			s.tmplMu.Unlock()
+		case kindMetric, kindLogTemplate, kindLogVolume:
+			st := s.logs
+			if f.Kind == kindMetric {
+				st = s.prom
+			}
+			ok = st.Lookup(fs.Key, func(sr *series.Series) { sr.Info.(*seriesInfo).firing = true })
+		}
+		if ok {
+			s.active[fs.Key] = &f
+			n++
+		}
+	}
+	return n
 }

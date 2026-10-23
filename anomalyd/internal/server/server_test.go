@@ -219,13 +219,20 @@ func TestNoveltyAndRestore(t *testing.T) {
 	push(t, h2, known, wire.Item{Service: "checkout", Template: "ERROR db pool exhausted: timeout after <NUM> (active=<NUM> idle=<NUM>)",
 		Level: "error", Counts: [][2]int64{{now, 20}}})
 	s2.Evaluate(time.Now())
-	if got := countKind(s2, kindLogNew); got != 0 {
-		t.Fatalf("restored templates reported as new: %d", got)
+	// The firing new-template finding carries over with its start time; nothing re-fires.
+	var f2 *Finding
+	s2.findMu.Lock()
+	for _, x := range s2.active {
+		f2 = x
+	}
+	s2.findMu.Unlock()
+	if got := countKind(s2, kindLogNew); got != 1 || !f2.StartsAt.Equal(f.StartsAt) {
+		t.Fatalf("after restore: %d new-template findings, %+v", got, f2)
 	}
 	push(t, h2, wire.Item{Service: "checkout", Template: "Refund issued order=<NUM> amount=<NUM>", Level: "info",
 		Counts: [][2]int64{{now, 9}}})
 	s2.Evaluate(time.Now())
-	if got := countKind(s2, kindLogNew); got != 1 {
+	if got := countKind(s2, kindLogNew); got != 2 {
 		t.Fatalf("new template after restore: %d findings", got)
 	}
 	rec := httptest.NewRecorder()
