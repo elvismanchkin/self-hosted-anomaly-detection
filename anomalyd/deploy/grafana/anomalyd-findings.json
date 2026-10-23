@@ -1,0 +1,723 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Findings from GET /api/v1/findings through the Infinity data source (yesoreyeram-infinity-datasource).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "anomalyd"
+      ],
+      "targetBlank": false,
+      "title": "anomalyd",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    {
+      "type": "table",
+      "title": "Firing",
+      "description": "Findings firing now, newest first.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${infinity}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${infinity}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${anomalyd}/api/v1/findings?state=firing",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "state",
+              "text": "state",
+              "type": "string"
+            },
+            {
+              "selector": "labels.alertname",
+              "text": "alert",
+              "type": "string"
+            },
+            {
+              "selector": "labels.service",
+              "text": "service",
+              "type": "string"
+            },
+            {
+              "selector": "labels.severity",
+              "text": "severity",
+              "type": "string"
+            },
+            {
+              "selector": "labels.direction",
+              "text": "direction",
+              "type": "string"
+            },
+            {
+              "selector": "score",
+              "text": "score",
+              "type": "number"
+            },
+            {
+              "selector": "observed",
+              "text": "observed",
+              "type": "number"
+            },
+            {
+              "selector": "expected",
+              "text": "expected",
+              "type": "number"
+            },
+            {
+              "selector": "startsAt",
+              "text": "started",
+              "type": "timestamp"
+            },
+            {
+              "selector": "endsAt",
+              "text": "ended",
+              "type": "timestamp"
+            },
+            {
+              "selector": "bucket",
+              "text": "bucket",
+              "type": "timestamp"
+            },
+            {
+              "selector": "labels.metric",
+              "text": "metric",
+              "type": "string"
+            },
+            {
+              "selector": "labels.level",
+              "text": "level",
+              "type": "string"
+            },
+            {
+              "selector": "labels.template_id",
+              "text": "template_id",
+              "type": "string"
+            },
+            {
+              "selector": "annotations.template",
+              "text": "template",
+              "type": "string"
+            },
+            {
+              "selector": "id",
+              "text": "id",
+              "type": "string"
+            }
+          ],
+          "filters": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "state": 0,
+              "alert": 1,
+              "service": 2,
+              "severity": 3,
+              "direction": 4,
+              "score": 5,
+              "observed": 6,
+              "expected": 7,
+              "started": 8,
+              "ended": 9,
+              "bucket": 10,
+              "metric": 11,
+              "level": 12,
+              "template_id": 13,
+              "template": 14,
+              "id": 15
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "resolved": {
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "warning": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "service dashboard",
+                    "url": "/d/anomalyd-service/anomalyd-service?var-service=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "score"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "observed"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expected"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "template"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 420
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "started"
+          }
+        ]
+      },
+      "id": 1,
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "table",
+      "title": "Firing and recently resolved",
+      "description": "The server keeps a capped list of resolved findings in memory.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${infinity}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${infinity}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${anomalyd}/api/v1/findings",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "state",
+              "text": "state",
+              "type": "string"
+            },
+            {
+              "selector": "labels.alertname",
+              "text": "alert",
+              "type": "string"
+            },
+            {
+              "selector": "labels.service",
+              "text": "service",
+              "type": "string"
+            },
+            {
+              "selector": "labels.severity",
+              "text": "severity",
+              "type": "string"
+            },
+            {
+              "selector": "labels.direction",
+              "text": "direction",
+              "type": "string"
+            },
+            {
+              "selector": "score",
+              "text": "score",
+              "type": "number"
+            },
+            {
+              "selector": "observed",
+              "text": "observed",
+              "type": "number"
+            },
+            {
+              "selector": "expected",
+              "text": "expected",
+              "type": "number"
+            },
+            {
+              "selector": "startsAt",
+              "text": "started",
+              "type": "timestamp"
+            },
+            {
+              "selector": "endsAt",
+              "text": "ended",
+              "type": "timestamp"
+            },
+            {
+              "selector": "bucket",
+              "text": "bucket",
+              "type": "timestamp"
+            },
+            {
+              "selector": "labels.metric",
+              "text": "metric",
+              "type": "string"
+            },
+            {
+              "selector": "labels.level",
+              "text": "level",
+              "type": "string"
+            },
+            {
+              "selector": "labels.template_id",
+              "text": "template_id",
+              "type": "string"
+            },
+            {
+              "selector": "annotations.template",
+              "text": "template",
+              "type": "string"
+            },
+            {
+              "selector": "id",
+              "text": "id",
+              "type": "string"
+            }
+          ],
+          "filters": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "state": 0,
+              "alert": 1,
+              "service": 2,
+              "severity": 3,
+              "direction": 4,
+              "score": 5,
+              "observed": 6,
+              "expected": 7,
+              "started": 8,
+              "ended": 9,
+              "bucket": 10,
+              "metric": 11,
+              "level": 12,
+              "template_id": 13,
+              "template": 14,
+              "id": 15
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "resolved": {
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "warning": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "service dashboard",
+                    "url": "/d/anomalyd-service/anomalyd-service?var-service=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "score"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "observed"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expected"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "template"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 420
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "started"
+          }
+        ]
+      },
+      "id": 2,
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "anomalyd"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "infinity",
+        "label": "Infinity",
+        "type": "datasource",
+        "query": "yesoreyeram-infinity-datasource",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "name": "anomalyd",
+        "label": "anomalyd URL",
+        "type": "textbox",
+        "query": "http://anomalyd.monitoring.svc:9400",
+        "description": "Base URL of the anomalyd server as Grafana's backend reaches it.",
+        "current": {
+          "selected": false,
+          "text": "http://anomalyd.monitoring.svc:9400",
+          "value": "http://anomalyd.monitoring.svc:9400"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "http://anomalyd.monitoring.svc:9400",
+            "value": "http://anomalyd.monitoring.svc:9400"
+          }
+        ],
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "anomalyd / findings",
+  "uid": "anomalyd-findings",
+  "version": 1
+}

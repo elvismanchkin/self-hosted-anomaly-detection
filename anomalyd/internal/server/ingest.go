@@ -356,12 +356,14 @@ func (s *Server) newTemplateLocked(svc string, id int, now time.Time) {
 func (s *Server) markLogStart(now time.Time) { s.logStart.CompareAndSwap(0, now.Unix()) }
 
 func cleanService(svc string) string {
-	svc = strings.TrimSpace(svc)
+	// Invalid UTF-8 (raw bytes from /api/v1/logs, or a rune cut in half) would make Prometheus
+	// fail the whole /metrics scrape and Alertmanager reject the alert.
+	svc = strings.TrimSpace(strings.ToValidUTF8(svc, ""))
 	if svc == "" {
 		return "unknown"
 	}
 	if len(svc) > 128 {
-		svc = svc[:128]
+		svc = strings.ToValidUTF8(svc[:128], "")
 	}
 	return svc
 }
