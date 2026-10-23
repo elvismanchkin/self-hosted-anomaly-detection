@@ -45,7 +45,13 @@ CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/anomalyd
 - End to end: `anomalyd/test/e2e/run.sh` needs Docker, Prometheus and Alertmanager. On GitHub it is
   the `e2e` workflow: weekly, or run it by hand (`workflow_dispatch`) on a branch. Run it for any
   change to ingest, evaluation or alerting. It expects three injected incidents to become exactly
-  three alerts.
+  three alerts. In a cloud container without Docker, dispatch it on the branch (about 14 min) and
+  link the run in the PR.
+- The first `go` command may download the go1.26 toolchain (GOTOOLCHAIN); that is expected.
+- Short fuzz runs need `-fuzzminimizetime=2s` next to `-fuzztime`; otherwise minimising new
+  inputs uses up the budget.
+- Mutation-check each new test: revert the fix briefly, see the test fail, restore.
+- Version: build with `-ldflags "-X main.version=..."`, otherwise it reports `dev`.
 
 ## Conventions
 
@@ -63,6 +69,16 @@ CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/anomalyd
   a series shard lock. So never take `findMu` while holding a miner lock, `tmplMu` or a shard
   lock, and never take a miner lock while holding `tmplMu`. Copy under locks, then encode or do
   I/O with no lock held.
+- A new finding kind needs a case in `restoreFindings` (state.go) and an entry in the
+  `anomalyd_findings_active` kinds (metrics.go).
+- Finding copies used outside `findMu` (API, snapshots) clone `Labels` and `Annotations`:
+  evaluation rewrites annotations in place.
+- Names that become labels or pool keys go through `cleanService` (at most 128 bytes, valid
+  UTF-8). One invalid UTF-8 label value breaks every scrape.
+- The agent's own `anomalyd_agent_*` metrics have no labels; the server's per-agent series carry
+  `agent`. Check both `/metrics` endpoints for name collisions.
+- Remote write drops NaN and ±Inf samples but counts them as arriving (`undefData`); only the
+  staleness marker means a series is gone.
 - New flags keep today's behaviour by default unless the plan item says otherwise. Bound every
   new map or label set (cardinality).
 - **Docs are part of the change.** Update `anomalyd/README.md` for flags, metrics, endpoints and
@@ -77,4 +93,8 @@ CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/anomalyd
   (symptom → cause → fix for bugs), test plan, deployment notes, docs.
 - Merge with a **merge commit**, not squash or rebase, so branches built on a merged commit stay
   valid.
-- Parallel work in git worktrees goes under `.claude/worktrees/` (ignored).
+- Run e2e before merging any change to ingest, evaluation or alerting.
+- After a PR merges, restart the branch from `origin/main` for follow-up work.
+- Parallel agents in git worktrees (`.claude/worktrees/`, ignored): a new worktree starts at the
+  default HEAD, so `git checkout --detach <sha>` first. Split work by file: `New` (server.go),
+  `load` and `copyState` (state.go), metrics.go and anomalyd/README.md conflict most.
