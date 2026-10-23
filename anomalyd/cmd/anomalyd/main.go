@@ -71,6 +71,9 @@ func usage() {
 // runs in a git checkout.
 func buildInfo() (ver, rev string) {
 	ver, rev = version, "unknown"
+	if ver == "" { // -X main.version= with nothing, e.g. git describe outside a checkout
+		ver = "dev"
+	}
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return ver, rev

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/wire"
@@ -138,7 +139,36 @@ func TestAgentRegistryCap(t *testing.T) {
 	if rows["node-0"].Pushes != 2 {
 		t.Fatalf("node-0: %+v", rows["node-0"])
 	}
+}
 
+// Agents idle for agentTTL (removed nodes) are dropped and free their slot; rejected pushes
+// keep an agent.
+func TestAgentRegistryExpiry(t *testing.T) {
+	s, _ := New(testConfig())
+	now := time.Now()
+	for i := range maxAgents - 1 {
+		s.agents.record("old-"+strconv.Itoa(i), 60, 1, nil, now.Add(-25*time.Hour))
+	}
+	s.agents.reject("bad-step", 120, now.Add(-2*time.Hour))
+	s.agents.record("new", 60, 1, nil, now)
+	rows := s.agents.rows(now, true)
+	if len(rows) != 2 || rows[0].Agent != "bad-step" || rows[1].Agent != "new" {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if m := get(t, s.Handler(), "/metrics"); strings.Contains(m, `agent="old-0"`) {
+		t.Fatal("idle agent still on /metrics")
+	}
+}
+
+// Long names are cut on a rune boundary: invalid UTF-8 in a label fails the whole scrape.
+func TestLongAgentNameStaysUTF8(t *testing.T) {
+	s, _ := New(testConfig())
+	h := s.Handler()
+	pushAs(t, h, strings.Repeat("a", 127)+"é", 60)
+	m := get(t, h, "/metrics")
+	if !utf8.ValidString(m) || !strings.Contains(m, `{agent="`+strings.Repeat("a", 127)+`"}`) {
+		t.Fatalf("agent label not cut on a rune boundary:\n%s", m)
+	}
 }
 
 // Services per agent are capped; ones without lines for an hour make room.

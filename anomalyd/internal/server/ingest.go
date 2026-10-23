@@ -303,7 +303,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	if p.Step < 0 || (p.Step > 0 && s.step%p.Step != 0) {
 		s.stats.logPushErrors.Add(1)
 		s.stats.logPushBadStep.Add(1)
-		s.agents.reject(p.Agent, p.Step)
+		s.agents.reject(p.Agent, p.Step, time.Now())
 		http.Error(w, fmt.Sprintf("agent step %ds does not divide server step %ds", p.Step, s.step), http.StatusBadRequest)
 		return
 	}
@@ -379,7 +379,7 @@ func cleanService(svc string) string {
 		return "unknown"
 	}
 	if len(svc) > 128 {
-		svc = svc[:128]
+		svc = strings.ToValidUTF8(svc[:128], "") // a split rune would break the /metrics scrape
 	}
 	return svc
 }

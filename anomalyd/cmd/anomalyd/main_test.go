@@ -48,4 +48,8 @@ func TestVersionString(t *testing.T) {
 	if v := versionString(); !strings.HasPrefix(v, "anomalyd v9.9.9 (revision ") || !strings.Contains(v, runtime.Version()) {
 		t.Fatalf("version = %q", v)
 	}
+	version = "" // -X main.version=$(git describe) outside a git checkout
+	if ver, _ := buildInfo(); ver == "" {
+		t.Fatal("empty -X main.version gave an empty version")
+	}
 }
