@@ -1032,3 +1032,89 @@ Price re-check (every vendor page, price table and price file behind docs/cost_m
 - https://export.arxiv.org/abs/2008.06448 — Loghub paper abstract: "19 real-world log datasets"
 - https://www.apache.org/licenses/LICENSE-2.0.txt — Apache License 2.0, official plain text; copied verbatim to LICENSE for the public repo
 - https://creativecommons.org/licenses/by/4.0/legalcode.txt — CC BY 4.0 legal code, official plain text; copied verbatim to LICENSE-docs
+
+## 2026-10-23
+
+### Feature-gap research (docs/research/06, docs/plans/feature-gaps.md)
+
+Vendor documentation and papers read by the product survey and the methods research. Notes give
+the capability or result as the source documents it; not re-verified.
+
+- https://docs.datadoghq.com/dashboards/graph_insights/watchdog_explains/ — Datadog Watchdog Explains: Ranks the tag values that explain an anomaly on a graph
+- https://docs.datadoghq.com/logs/explorer/watchdog_insights/ — Datadog Watchdog Insights (logs): Error outliers: attributes that are over-represented in a log spike
+- https://docs.datadoghq.com/monitors/types/outlier/ — Datadog outlier monitors: A member of a group (host, pod) that behaves unlike the others
+- https://docs.datadoghq.com/monitors/types/forecasts/ — Datadog forecast monitors: Alert before a metric crosses a limit
+- https://docs.datadoghq.com/monitors/guide/how-to-update-anomaly-monitor-timezone/ — Datadog anomaly monitors: A time zone setting, so seasonality follows local time across DST
+- https://docs.datadoghq.com/monitors/types/anomaly/ — Datadog anomaly monitors: A time zone setting, so seasonality follows local time across DST
+- https://docs.datadoghq.com/watchdog/faulty_deployment_detection/ — Datadog faulty deployment detection: A verdict per deployment from its error rates
+- https://www.datadoghq.com/blog/pattern-inspector/ — Datadog Pattern Inspector: The value distribution behind each wildcard of a log pattern
+- https://www.elastic.co/blog/elastic-stack-aiops-labs-8-12-ga-of-log-rate-analysis — Elastic log rate analysis: Field/value pairs that explain a change in log rate. Platinum licence
+- https://www.elastic.co/docs/reference/aggregations/search-aggregations-bucket-significantterms-aggregation — Elastic log rate analysis: Field/value pairs that explain a change in log rate. Platinum licence
+- https://www.elastic.co/docs/explore-analyze/machine-learning/anomaly-detection/ml-ad-explain — Elastic ML anomaly explanation: Multi-bucket impact and other factors behind a score
+- https://www.elastic.co/docs/reference/query-languages/esql/commands/change-point — Elastic ES|QL `CHANGE_POINT`: Classifies a change as a spike, a dip, a step or a trend
+- https://www.elastic.co/docs/explore-analyze/machine-learning/anomaly-detection/ml-ad-run-jobs — Elastic ML custom rules: "Skip model update" keeps an incident out of the baseline
+- https://grafana.com/docs/grafana-cloud/machine-learning/outlier-detection/ — Grafana Cloud outlier detection: Peer-group outliers in Grafana
+- https://grafana.com/docs/grafana-cloud/machine-learning/dynamic-alerting/forecasting/ — Grafana Cloud forecasting: Forecasts with holidays and seasonality settings
+- https://grafana.com/docs/grafana-cloud/machine-learning/machine-learning/forecasting/holidays-and-seasonality/ — Grafana Cloud forecasting: Forecasts with holidays and seasonality settings
+- https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/sift/analyses/ — Grafana Sift: Fixed, cheap checks attached to an alert (restarts, errors, deployments)
+- https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/introduction/ — Grafana Adaptive Logs: Log volume per pattern and recommendations on what to drop
+- https://grafana.com/docs/grafana/latest/visualizations/simplified-exploration/logs/patterns/ — Grafana Logs patterns: Patterns over time, next to the log view
+- https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/LogsAnomalyDetection.html — AWS CloudWatch Logs anomaly detection: Pattern anomalies, token values, and a priority from keywords
+- https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_AnomalyDetectorConfiguration.html — AWS CloudWatch anomaly detectors: Excluded time ranges and a time zone per detector
+- https://docs.splunk.com/Documentation/ITSI/latest/SI/AD — Splunk ITSI: Adaptive thresholds, entity cohesion, predictive analytics
+- https://help.splunk.com/en/splunk-it-service-intelligence/splunk-it-service-intelligence/visualize-and-assess-service-health/5.0/predictive-analytics/use-the-predictive-analytics-dashboard-in-itsi — Splunk ITSI: Adaptive thresholds, entity cohesion, predictive analytics
+- https://docs.dynatrace.com/docs/dynatrace-intelligence-classic/root-cause-analysis/event-analysis-and-correlation — Dynatrace Davis: Event correlation along the topology; frequent-issue detection
+- https://docs.dynatrace.com/docs/shortlink/frequent-issues — Dynatrace Davis: Event correlation along the topology; frequent-issue detection
+- https://learn.netdata.cloud/docs/netdata-ai/anomaly-detection — Netdata: Per-metric ML ensemble, anomaly rate, metric correlations
+- https://learn.netdata.cloud/docs/netdata-ai/troubleshooting/metric-correlations — Netdata: Per-metric ML ensemble, anomaly rate, metric correlations
+- https://docs.coroot.com/inspections/deployment-tracking — Coroot: Deployment tracking, RCA over the service map
+- https://coroot.com/blog/we-built-ai-powered-root-cause-analysis-that-actually-works/ — Coroot: Deployment tracking, RCA over the service map
+- https://docs.keephq.dev/overview/enrichment/mapping — Keep: Enrichment from a mapping table; topology correlation
+- https://docs.keephq.dev/overview/correlation-topology — Keep: Enrichment from a mapping table; topology correlation
+- https://docs.robusta.dev/master/playbook-reference/builtin-alert-enrichment.html — Robusta and HolmesGPT: Built-in alert enrichment; custom toolsets for the agent
+- https://docs.robusta.dev/master/configuration/holmesgpt/custom_toolsets.html — Robusta and HolmesGPT: Built-in alert enrichment; custom toolsets for the agent
+- https://www.linkedin.com/blog/engineering/analytics/analyzing-anomalies-with-thirdeye — LinkedIn ThirdEye: Dimension analysis of an anomaly
+- https://www.uber.com/blog/uvitals-an-anomaly-detection-alerting-system/ — Uber uVitals: Per-metric seasonality and dimension drill-down
+- https://learn.microsoft.com/en-us/kusto/query/anomaly-detection — Microsoft Kusto: `series_periods` seasonality detection
+- https://docs.newrelic.com/docs/change-tracking/view-analyze-data/ — New Relic change tracking: Deployments and changes next to the charts
+- https://arxiv.org/pdf/2405.09330 — BARO (RobustScorer), RCAEval: Ranks root-cause metrics by their robust change after an estimated onset. Strong on the RCAEval testbeds; the results come from testbeds, not production
+- https://arxiv.org/html/2412.17015v1 — BARO (RobustScorer), RCAEval: Ranks root-cause metrics by their robust change after an estimated onset. Strong on the RCAEval testbeds; the results come from testbeds, not production
+- https://arxiv.org/html/2408.13729v1 — BARO (RobustScorer), RCAEval: Ranks root-cause metrics by their robust change after an estimated onset. Strong on the RCAEval testbeds; the results come from testbeds, not production
+- https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/bhagwan — Adtributor, iDice, PSqueeze and successors: Which dimension values explain a change in an aggregate
+- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/07/ICSE-2016-1-iDice-Problem-Identification-for-Emerging-Issues.pdf — Adtributor, iDice, PSqueeze and successors: Which dimension values explain a change in an aggregate
+- https://arxiv.org/abs/2205.10004 — Adtributor, iDice, PSqueeze and successors: Which dimension values explain a change in an aggregate
+- https://arxiv.org/abs/2305.03331 — Adtributor, iDice, PSqueeze and successors: Which dimension values explain a change in an aggregate
+- https://github.com/NetManAIOps/PSqueeze — Adtributor, iDice, PSqueeze and successors: Which dimension values explain a change in an aggregate
+- https://doi.org/10.1145/3611643.3616249 — Nezha: Contrasts the normal and the faulty window over templates and metrics
+- https://arxiv.org/pdf/2407.01710 — Nezha: Contrasts the normal and the faulty window over templates and metrics
+- https://ieeexplore.ieee.org/abstract/document/9521340 — TraceRCA: Ranks operations that are over-represented in abnormal traces
+- https://2020.icse-conferences.org/details/icse-2020-Software-Engineering-in-Practice/24/Understanding-and-Handling-Alert-Storm-for-Online-Service-Systems — Alert-storm handling and topology correlation: Grouping alerts into incidents along dependencies
+- https://arxiv.org/abs/2403.06485 — Alert-storm handling and topology correlation: Grouping alerts into incidents along dependencies
+- https://arxiv.org/pdf/2403.18639 — Alert-storm handling and topology correlation: Grouping alerts into incidents along dependencies
+- https://cran.r-project.org/package=surveillance — Outbreak surveillance and count models: Baselines that ignore past outbreaks; counts scored against an exposure (traffic)
+- https://arxiv.org/abs/2308.12925 — Outbreak surveillance and count models: Baselines that ignore past outbreaks; counts scored against an exposure (traffic)
+- https://arxiv.org/pdf/2007.14254 — Outbreak surveillance and count models: Baselines that ignore past outbreaks; counts scored against an exposure (traffic)
+- https://arxiv.org/abs/2605.22779 — Semantic log labelling with LLMs: Labels a new template as indicative of failure, or as benign churn
+- https://arxiv.org/abs/2510.22986 — Semantic log labelling with LLMs: Labels a new template as indicative of failure, or as benign churn
+- https://arxiv.org/pdf/2406.07467 — Semantic log labelling with LLMs: Labels a new template as indicative of failure, or as benign churn
+- https://arxiv.org/abs/2604.20553 — LLM-assisted log parsing (LILAC, LibreLog and later): Proposes masks and template merges
+- https://arxiv.org/abs/2601.22590 — LLM-assisted log parsing (LILAC, LibreLog and later): Proposes masks and template merges
+- https://arxiv.org/pdf/2408.01585 — LLM-assisted log parsing (LILAC, LibreLog and later): Proposes masks and template merges
+- https://arxiv.org/pdf/2310.01796 — LLM-assisted log parsing (LILAC, LibreLog and later): Proposes masks and template merges
+- https://arxiv.org/abs/2411.15250 — Parameter-aware log anomaly detection, DDSketch: Tracks the values behind template wildcards
+- https://arxiv.org/abs/2409.20503 — Parameter-aware log anomaly detection, DDSketch: Tracks the values behind template wildcards
+- https://www.vldb.org/pvldb/vol12/p2195-masson.pdf — Parameter-aware log anomaly detection, DDSketch: Tracks the values behind template wildcards
+- https://proceedings.iclr.cc/paper_files/paper/2025/file/d29b8d53678015079e1d245c023e49d2-Paper-Conference.pdf — OpenRCA and agent-RCA evaluation: How to score LLM triage on replayed incidents
+- https://arxiv.org/abs/2606.27154 — OpenRCA and agent-RCA evaluation: How to score LLM triage on replayed incidents
+- https://proceedings.mlr.press/v267/jha25a.html — OpenRCA and agent-RCA evaluation: How to score LLM triage on replayed incidents
+- https://www.traversal.com/blog/openrca-isnt-root-cause-analysis-why-that-matters — OpenRCA and agent-RCA evaluation: How to score LLM triage on replayed incidents
+- https://arxiv.org/html/2305.15778 — RCACopilot: Retrieves similar past incidents
+- https://sre.google/workbook/alerting-on-slos/ — Alerting on SLOs: Burn-rate alerts as the impact signal
+- https://github.com/slok/sloth — Alerting on SLOs: Burn-rate alerts as the impact signal
+- https://arxiv.org/abs/2604.20122 — Adaptive conformal p-values per series: An empirical p-value from about 2,000 points per season cannot reach the tail that |z| ≥ 4 needs. MT already plans SPOT/GPD
+- https://proceedings.mlr.press/v329/xu26a.html — Adaptive conformal p-values per series: An empirical p-value from about 2,000 points per season cannot reach the tail that |z| ≥ 4 needs. MT already plans SPOT/GPD
+- https://proceedings.neurips.cc/paper/2021/hash/def130d0b67eb38b7a8f4e7121ed432c-Abstract.html — Global false discovery rate (FDR) control: Our scores are not calibrated p-values, the independence assumptions fail, and findings never page
+- https://arxiv.org/pdf/2112.03196 — Global false discovery rate (FDR) control: Our scores are not calibrated p-values, the independence assumptions fail, and findings never page
+- https://arxiv.org/pdf/2206.13167 — Affiliation and PATE metrics, TSB-AD runs of our scorer: With about 20 labelled incidents the confidence intervals dominate; TSB-AD lacks the seasonality our scorer assumes
+- https://arxiv.org/html/2405.12096v1 — Affiliation and PATE metrics, TSB-AD runs of our scorer: With about 20 labelled incidents the confidence intervals dominate; TSB-AD lacks the seasonality our scorer assumes
+- https://www.vldb.org/pvldb/vol16/p1399-he.pdf — OneShotSTL online decomposition: One more candidate for the planned scorer interface (L5/MT). It does not handle several seasons and would break parity with the Python scorer

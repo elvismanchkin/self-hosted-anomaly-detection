@@ -5,9 +5,10 @@
 - This plan lists **37 gaps** (G1–G37) that the existing plans do not cover, or cover only in
   part: [future improvements](future-improvements.md) (N, X and L items), the
   [model trainer](model-trainer.md) (MT) and the [deployment plan](deployment.md) (DP). A review
-  of the code and of the plans found them. Each value and effort rating is the reviewer's
-  corrected rating.
-- **We start small.** Batch 1 (7 small items) is built, on branch `claude/gracious-cerf-2gt6lx`.
+  of the code, the plans, comparable products and recent research found them; the evidence is in
+  [research 06](../research/06-feature-gaps-research.md). Each value and effort rating is the
+  reviewer's corrected rating.
+- **We start small.** Batch 1 (7 small items) is built and merged to `main` (PR #3).
   Each batch-1 item has a **Status** line: what landed, and what was deferred. Batch 2 has 9 more
   small items. 13 medium items come next, and 8 large or low-value items come later.
 - **Three batch-1 items deal with silent failures in the code.** A metric series that stops
@@ -146,7 +147,9 @@ info) are in the glossary.
 
 ## Batch 1: built
 
-Batch 1 is built on branch `claude/gracious-cerf-2gt6lx`. All seven items are small and need no
+Batch 1 is built and merged to `main`
+([PR #3](https://github.com/elvismanchkin/self-hosted-anomaly-detection/pull/3), 2026-10-23). All
+seven items are small and need no
 other plan item. G5, G6 and G13 fix failure modes in the code; the other four add features or
 checks. Four packages were built and reviewed separately, then merged: G5; G6 with G11; G1 with
 G13; G2 with G12. Operators find the new flags, alerts, metrics and endpoints in the
@@ -170,6 +173,28 @@ copies shared the label and annotation maps. It encoded them after unlocking, wh
 rewrites a firing finding's annotations in place. So a read of `/api/v1/findings` during
 evaluation could crash the server (a concurrent map read and write is fatal in Go). The copies now
 own their maps (commit `6a755c9`). The G5 review found it; the bug predates batch 1.
+
+A second review looked at the merged batch as a whole. It found six problems that only showed up
+in combination, all fixed in commit `f4cd17f` with regression tests:
+
+- `AnomalydSeriesAbsent` fired for series that still arrive with NaN values, such as an SLO
+  ratio that is 0/0 while a service is idle. Remote write drops NaN samples, so the bucket looked
+  empty. A NaN or ±Inf sample now counts as arriving; only a staleness marker or no sample counts
+  as missing.
+- `gc` could delete the metadata of a template created during its scan of the miners, during
+  novelty warm-up. The template then lost its levels, keyword level and signatures.
+- At the `--max-services` cap, a restore could let `_other` take the miner slot of a real
+  service. `_other` now loads last.
+- A restore could bring back service names that older versions saved as invalid UTF-8. One such
+  label value breaks every `/metrics` scrape. Names are now cleaned on restore.
+- The health dashboard counted agent lines twice: the server's per-agent
+  `anomalyd_agent_lines_total{agent}` has the same name as the agent's own counter.
+- The 20 s CI fuzz runs spent most of their time minimising inputs; CI now passes
+  `-fuzzminimizetime=2s`.
+
+The CI checks and the end-to-end test passed on the merged branch: three injected incidents
+became exactly three alerts
+([e2e run](https://github.com/elvismanchkin/self-hosted-anomaly-detection/actions/runs/39954641389)).
 
 **Order inside batch 1.** The ratings put G1 and G2 (high value) first. The plan suggested a
 different order, because of what each item needs:
@@ -607,6 +632,26 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
   **Value** medium.
 - **Sources.** https://github.com/grafana/promql-anomaly-detection ·
   https://www.elastic.co/docs/reference/machine-learning/ml-count-functions
+
+### Open items from the batch-1 reviews
+
+The reviewers also found these. Each is small, has a workaround or a narrow trigger, and was left
+for later. Pick them up with the item named, or when the code next changes.
+
+| Item | Where | What happens | When to fix |
+|---|---|---|---|
+| G1 | `logparse.InferLevel` | The CamelCase `*Error` rule also matches names such as `NoError` and `OnError`, and a JSON key such as `"panic":false` infers error. Only `key=` is treated as a key. | With G22 (shared keyword table) |
+| G1 | `templateSeverity` | The `severity_source` annotation is added even when the keyword level does not change the severity, for example an error template going down. | Next change to severity |
+| G1 | signature file loader | A line over 64 KB fails with bufio's "token too long", which does not name the line. | With X11 (config file) |
+| G1 | signature counting | Signature matches count lines with old timestamps (agent catch-up), as novelty does. | With N3 (event-time buckets) |
+| G1 | `load` | Each cluster is classified once per snapshot service that maps to its miner. When `--max-services` was lowered, that is quadratic at start-up. | If start-up time matters |
+| G5 | `load` | The step or ring-size warning appears even when the snapshot has no series of that kind (`metric_series=0`). | Cosmetic |
+| G5 | `Run` | When `ListenAndServe` fails at start-up, `Run` returns without waiting for a running background save. A stray `anomalyd.state.*` temp file can stay; the state file itself cannot break. | Cosmetic |
+| G5 | `copyState` | A periodic save can run during an evaluation, so the series (with `LastEval`) and the findings in one snapshot can come from different points of that evaluation. For example, a finding that fired during that evaluation can be missing from a snapshot whose series already count its bucket as scored. Not tested. | With X14 |
+| G5 | `writeState` | No `fsync` before the rename. On some file systems a power loss right after a save can leave an empty or partial state file; `load` then fails and logs a warning. | With X14 |
+| G6 | `agent.push` | On shutdown an idle agent also sends a final empty push. If the server cannot be reached, it waits up to the 15 s client timeout and exits 1, where it used to exit 0 at once. The same applies to `--once` with no lines. | With N4 (idempotent pushes) |
+| G12 | `FuzzTokenize` | No idempotence check (tokenizing a template again gives the same tokens). It would fail today on the e-mail masking gap, and the Drain3 masks are not idempotent either. | With the N2 mask fix |
+| G12 | CI kubeconform | No `-kubernetes-version`, so it checks against the latest schemas. No target cluster version is written down. | When Step 0 records the cluster version |
 
 ## Batch 2: small, next
 
