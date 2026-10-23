@@ -206,9 +206,52 @@ What this means for 200 GB–2 TB/day of logs:
     both directions count.
   - anomalyd ignores log series with fewer than `--log-min-count` lines in both observed and
     expected.
+  - A metric finding also resolves after 3 missing buckets. A series that stops arriving gets
+    its own alert, see **Absent series**.
 - **New templates.** The server may see a template for the first time after the
   `--novelty-warmup` period. That template becomes a finding once it has `--novelty-min-lines`
   lines within `--novelty-window`. The finding stays firing for `--novelty-ttl`.
+- **Severity from keywords.** Raw stdout often has no level word. So a Java
+  `OutOfMemoryError`, a Go `panic:` or a Python `Traceback` would count as info. The server
+  reads each template's fixed words for keywords, so such a template still gets `warning`:
+  - It applies when the template's dominant level is unknown or info. A real level (error,
+    warn, debug) always wins.
+  - `error` keywords: `panic`, `fatal`, `segfault`, `SIGSEGV`, `deadlock`, `OOM`,
+    `OOMKilled`, `Traceback`, `OutOfMemoryError`, `StackOverflowError`, "out of memory",
+    "segmentation fault", "core dumped", "nil pointer dereference", "no space left on device",
+    "too many open files", and the upper-case words `ERROR`, `CRITICAL`, `SEVERE`.
+  - `warn` keywords: class names that end in `Exception` or `Error` (`NullPointerException`,
+    `KeyError`), "connection refused", "connection reset", "broken pipe", and `WARN`,
+    `WARNING`.
+  - These do not count: a plain "error" ("no error", "errors=0", "error_count"), a key such as
+    `fatal=0`, "non-fatal", and words inside a path or URL (`/api/panic`). The full table is in
+    [internal/logparse/severity.go](internal/logparse/severity.go).
+  - The finding then carries the annotation `severity_source="template keywords"`. Its `level`
+    label stays the observed level.
+- **Known-bad signatures.** `--signature-file` lists templates that always deserve a look (see
+  [Wiring](#wiring-it-into-our-stack)). A template that matches one fires
+  `AnomalydLogSignature` on its first lines. It does not wait for `--novelty-min-lines` or the
+  warm-up. There is at most one finding per service and signature per 24 h, also across
+  restarts with `--state-dir`. It stays firing for `--novelty-ttl`.
+  `anomalyd_signature_matches_total{signature}` counts the matching lines.
+- **Absent series.** A metric series that stops arriving fires `AnomalydSeriesAbsent`:
+  - It fires after `--absent-buckets` (default 3, 0 = off) missing buckets in a row.
+  - Only buckets that other remote-write series reached count. So a Prometheus restart, when
+    no series arrives, is not an absence.
+  - The series must have come by remote write since anomalyd started. A backfilled copy that
+    remote write never sends is not absent. This happens, for example, when Prometheus adds an
+    external label that is not in `--ignore-labels`.
+  - It covers only series where both directions count, such as request rates. Errors or
+    latency going away is not a problem.
+  - The last expected value must be above the scale floor: `--abs-floor` for its
+    `anomaly_type`, or zero without one. So set, for example,
+    `--abs-floor errors=0.001,requests=0.1` to ignore near-idle series. The flag replaces the
+    default list, so keep `errors=0.001` in it.
+  - A series must arrive more often than every `--absent-buckets` × `--step`. A recording rule
+    that runs less often looks absent between its runs.
+  - It resolves when data returns, or `--absent-ttl` (default 24 h) after the series stopped,
+    for a service that was shut down on purpose. After that, the series is dropped once a full
+    ring has gone by without data.
 - **Merging templates across hosts.** Each agent sends its masked template text. The server
   re-clusters those texts with its own Drain instance per service. This gives one stable
   `template_id` per service across all hosts. Another host, or an agent after a restart, may
@@ -230,21 +273,24 @@ What this means for 200 GB–2 TB/day of logs:
   - `/metrics` shows `anomalyd_snapshot_duration_seconds` (last snapshot),
     `anomalyd_snapshot_failures_total` and `anomalyd_snapshot_last_success_timestamp_seconds`.
 
-anomalyd sends four alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
-drop.
+anomalyd sends six alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
+drop. For template alerts, the level comes from keywords when the lines carry none.
 
 | Alert (`alertname`) | `tier` | `severity` | Fires when |
 |---|---|---|---|
 | `AnomalydMetricAnomaly` | 2 | warning | a remote-written series leaves its seasonal band |
+| `AnomalydSeriesAbsent` | 2 | warning | a remote-written series (both directions count) stops arriving while others still arrive |
 | `AnomalydLogNewTemplate` | 1 | warning (error/warn level) or info | a template first seen after warm-up reaches the minimum lines |
+| `AnomalydLogSignature` | 1 | warning | a template that matches `--signature-file` gets lines |
 | `AnomalydLogTemplateRate` | 2 | warning (error/warn up) or info | one template's line rate leaves its band |
 | `AnomalydLogVolume` | 2 | warning (error/warn up, or info/unknown down) or info | a service's lines per level leave their band |
 
 Every alert carries:
 
-- `source="anomalyd"`, `anomaly_kind` and `direction`.
+- `source="anomalyd"` and `anomaly_kind`. All but `AnomalydLogNewTemplate` and
+  `AnomalydLogSignature` also carry `direction` (`down` for an absent series).
 - the series labels (`service`, `anomaly_name`, …), or `service`, `template_id` and `level`
-  for log findings.
+  for log findings. `AnomalydLogSignature` carries `service`, `template_id` and `signature`.
 - annotations with the observed and expected values, the band and the bucket time. Log findings
   also carry the masked template.
 
@@ -291,6 +337,10 @@ remote_write:
         action: keep
 ```
 
+Send series that are summed per service. A series with a pod or instance label disappears each
+time the pod is replaced, and then `AnomalydSeriesAbsent` fires. If you cannot avoid such
+labels, turn absence off with `--absent-buckets 0`.
+
 **Server:**
 ```bash
 anomalyd server --listen :9400 --state-dir /var/lib/anomalyd --backfill-url http://prometheus.internal:9090 --backfill-match '{__name__=~"anomaly:svc:.+"}' --alertmanager-url http://alertmanager.internal:9093 --external-url http://anomalyd.internal:9400
@@ -299,6 +349,24 @@ anomalyd server --listen :9400 --state-dir /var/lib/anomalyd --backfill-url http
 **Logs and version.** Every subcommand takes `--log-format=text|json` (default `text`) and
 `--log-level=debug|info|warn|error` (default `info`). `anomalyd version` prints the version, the
 git revision and the Go version.
+
+**Signature file** (`--signature-file`). It lists known-bad templates, one `name: regex` per
+line. Lines that start with `#` and blank lines are skipped.
+
+- The regex is [RE2](https://github.com/google/re2/wiki/Syntax), as in Go.
+- It is matched against the masked template text, not the raw line. So numbers read `<NUM>`,
+  addresses `<IP>`, and words that Drain generalised read `<*>`. Write `<NUM>`, not `\d+`.
+- The name becomes the `signature` label. It may use letters, digits, `_`, `.` and `-`.
+- A bad line stops the server at start-up with an error that names the line.
+- `GET /api/v1/templates` shows which signatures each template matches.
+
+```text
+# name: regex
+db-pool-exhausted: db pool exhausted: timeout .* after <NUM>
+jvm-oom: (?i)OutOfMemoryError|out of memory
+disk-full: No space left on device
+tls-expired: x509: certificate has expired
+```
 
 **Agent.** Run it on every node that Filebeat reads from. For container stdout, run it as a
 DaemonSet (one pod on each node) with Filebeat's read-only mounts. The manifest is
@@ -372,7 +440,7 @@ The server has these HTTP endpoints:
 | `POST /api/v1/templates` | agent pushes (gzip JSON, [wire format](internal/wire/wire.go)) |
 | `POST /api/v1/logs?service=` | raw newline-delimited JSON (NDJSON) or text lines, for small set-ups without agents |
 | `GET /api/v1/findings[?state=firing&id=]` | active and recently resolved findings |
-| `GET /api/v1/templates[?service=]` | current templates per service with line counts and dominant level |
+| `GET /api/v1/templates[?service=]` | current templates per service with line counts, dominant level, keyword level (`inferred_level`) and matching `signatures` |
 | `GET /api/v1/agents` | agents that pushed in the last 24 hours: last push, step, pushes, rejected pushes, lines, services with lines in the last hour |
 | `GET /metrics`, `GET /-/healthy` | scores and bands, self-metrics, liveness |
 
@@ -419,6 +487,7 @@ Notes:
    - a deleted file that gets closed, and a new file at the same path that is read from the
      start
    - findings → Alertmanager payload, novelty and snapshot restore
+   - keyword severity, signature findings and absent series, each across a restart
    - the raw-log endpoint
 2. We also wrapped the same lines with `gen logs --container …`. Results:
    - CRI: 1.48–1.60 M lines/s
@@ -489,6 +558,16 @@ We did not verify:
 - **Seasonality needs history**. Weekly bands need 2 weeks for a full residual window. The
   backfill covers metrics. Log series start in cold-start mode (recent median) until a day of
   counts exists.
+- **Keywords only see fixed words**. When Drain turns a keyword into `<*>` (`Caught <*>` from
+  two exception names), the template loses its keyword level. Signatures see the same text.
+- **Absence needs a scored series**. A series is reported absent only if remote write sent it,
+  and it was scored, in this process. So a series that stops while anomalyd is down is not
+  reported after the restart. A renamed series (a label changed) looks absent until
+  `--absent-ttl`.
+- **Absence trusts the data clock**. A bucket counts as missing once any other series reached
+  it. With several Prometheus servers writing to one anomalyd, one that stops makes all its
+  series absent. While Prometheus sends a backlog, its remote-write shards can be minutes
+  apart, and a series that is only late can look absent for a moment.
 - **One season per source**, set by `--prom-season` and `--log-season`. Holidays and multiple
   seasons at once are out of scope for the PoC. Multiple seasons need a method such as
   [MSTL](https://arxiv.org/abs/2107.13462) (seasonal-trend decomposition for multiple seasonal
