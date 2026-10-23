@@ -58,6 +58,7 @@ type seriesInfo struct {
 	written     bool  // remote write delivered it in this process (a backfill-only copy is never absent)
 	absentRun   int   // missing buckets in a row while other series had data
 	absentSince int64 // first bucket of that run
+	undefData   int64 // bucket of the last NaN or ±Inf sample that was not a staleness marker
 }
 
 // maxFuture is how far ahead of the server clock a sample or log count may be dated; later ones
@@ -147,6 +148,11 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 				// NaN includes Prometheus staleness markers; ±Inf (e.g. x/0 in a ratio rule) would
 				// poison the baseline; future timestamps would move the data clock ahead.
 				if math.IsNaN(smp.Value) || math.IsInf(smp.Value, 0) || sec > maxTS {
+					// 0/0 or x/0 in a ratio rule: the series still arrives, so it is not absent.
+					// Only the staleness marker says that it went away.
+					if sec <= maxTS && math.Float64bits(smp.Value) != staleNaN {
+						info.undefData = max(info.undefData, sec/s.step)
+					}
 					continue
 				}
 				bk := sec / s.step
@@ -179,6 +185,9 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// staleNaN is the value of Prometheus' staleness marker (prometheus/model/value.StaleNaN).
+const staleNaN = 0x7ff0000000000002
 
 // markSeen records that remote write delivered data for bucket b. A series missing from a bucket
 // that no series reached (Prometheus down or restarting) is not absent.

@@ -45,7 +45,7 @@ jobs:
       - name: fuzz network decoders and the tokenizer (20 s each)
         run: |
           for t in promrw/FuzzDecode server/FuzzHandlePush drain/FuzzTokenize; do
-            go test -run='^$' -fuzz="^${t#*/}\$" -fuzztime=20s "./internal/${t%/*}"
+            go test -run='^$' -fuzz="^${t#*/}\$" -fuzztime=20s -fuzzminimizetime=2s "./internal/${t%/*}"
           done
       - name: upload fuzz crashers
         if: failure()

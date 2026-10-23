@@ -1064,7 +1064,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(anomalyd_agent_lines_total[$__rate_interval]))",
+          "expr": "sum(rate(anomalyd_agent_lines_total{agent=\"\"}[$__rate_interval]))",
           "legendFormat": "all agents",
           "refId": "A",
           "range": true,
@@ -1077,7 +1077,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(5, sum by (instance) (rate(anomalyd_agent_lines_total[$__rate_interval])))",
+          "expr": "topk(5, sum by (instance) (rate(anomalyd_agent_lines_total{agent=\"\"}[$__rate_interval])))",
           "legendFormat": "{{instance}}",
           "refId": "B",
           "range": true,

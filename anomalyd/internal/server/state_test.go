@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/promrw"
@@ -398,5 +399,107 @@ func TestLoadFoldsServicesWithoutIDCollision(t *testing.T) {
 	defer s2.tmplMu.Unlock()
 	if len(s2.tmpl) != 6 {
 		t.Fatalf("template metadata after gc = %d, want 6", len(s2.tmpl))
+	}
+}
+
+// gc must not delete the metadata of a template created while it scans the miners: nothing would
+// recreate it, so the template would lose its levels, keyword level and signatures.
+func TestGCKeepsMetaOfTemplatesCreatedDuringScan(t *testing.T) {
+	cfg := testConfig()
+	cfg.Drain.MaxClusters = 0
+	s, _ := New(cfg)
+	h := s.Handler()
+	now := time.Now().Unix() / 60 * 60
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { // gc runs on the evaluation goroutine
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			s.gcRuns = 99
+			s.gc(0, 0)
+		}
+	}()
+	word := func(i int) string { return string([]byte{'a' + byte(i/676%26), 'a' + byte(i/26%26), 'a' + byte(i%26)}) }
+	for i := range 3000 {
+		push(t, h, wire.Item{Service: "svc", Template: word(i) + " happened " + word(i), Counts: [][2]int64{{now, 1}}})
+	}
+	close(stop)
+	wg.Wait()
+	lost := 0
+	s.pool.Each(func(svc string, m *drain.Miner) {
+		m.Clusters(func(c *drain.Cluster) {
+			if s.tmpl[tmplKey{svc, c.ID}] == nil {
+				lost++
+			}
+		})
+	})
+	if lost != 0 {
+		t.Fatalf("%d live templates lost their metadata to gc", lost)
+	}
+}
+
+// At the --max-services cap, restoring must not let _other take the slot of a real service
+// (map order would decide that half the time).
+func TestLoadKeepsRealServicesAtCap(t *testing.T) {
+	cfg := testConfig()
+	cfg.StateDir = t.TempDir()
+	cfg.MaxServices = 2
+	s, _ := New(cfg)
+	now := time.Now().Unix() / 60 * 60
+	push(t, s.Handler(), wire.Item{Service: "a", Template: "alpha started", Counts: [][2]int64{{now, 1}}},
+		wire.Item{Service: "b", Template: "bravo started now", Counts: [][2]int64{{now, 1}}},
+		wire.Item{Service: "c", Template: "charlie started right now", Counts: [][2]int64{{now, 1}}})
+	if err := s.save(); err != nil {
+		t.Fatal(err)
+	}
+	for range 50 {
+		s2, _ := New(cfg)
+		if err := s2.load(); err != nil {
+			t.Fatal(err)
+		}
+		keys := map[string]bool{}
+		for _, k := range s2.pool.Keys() {
+			keys[k] = true
+		}
+		if !keys["a"] || !keys["b"] {
+			t.Fatalf("restore folded a real service into _other: %v", keys)
+		}
+	}
+}
+
+// A snapshot from an older version may hold a service name that is not valid UTF-8; after a
+// restore it must not reach /metrics, where it would break every scrape.
+func TestLoadCleansInvalidUTF8Services(t *testing.T) {
+	cfg := testConfig()
+	cfg.StateDir = t.TempDir()
+	s, _ := New(cfg)
+	bad := strings.Repeat("s", 127) + "\xc3" // the old cleanService cut at byte 128 mid-rune
+	m, used := s.pool.Get(bad)
+	m.Lock()
+	c, _ := m.AddLine("worker started")
+	m.Unlock()
+	s.addLog(used, c.ID, "info", time.Now().Unix(), 3)
+	if err := s.save(); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := New(cfg)
+	if err := s2.load(); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range s2.pool.Keys() {
+		if !utf8.ValidString(k) {
+			t.Fatalf("restored service %q is not valid UTF-8", k)
+		}
+	}
+	rec := httptest.NewRecorder()
+	s2.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if !utf8.Valid(rec.Body.Bytes()) {
+		t.Fatal("/metrics after restore is not valid UTF-8")
 	}
 }

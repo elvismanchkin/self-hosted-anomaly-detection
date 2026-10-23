@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/series"
@@ -150,8 +151,17 @@ func (s *Server) load() error {
 		return fmt.Errorf("state version %d, want %d", st.Version, stateVersion)
 	}
 	nt := 0
-	for svc, cs := range st.Templates {
-		m, used := s.pool.Get(svc)
+	// _other last: it holds the services beyond --max-services, so in map order it could take
+	// the slot of a service that had its own miner.
+	svcs := slices.Sorted(maps.Keys(st.Templates))
+	if i := slices.Index(svcs, drain.OverflowKey); i >= 0 {
+		svcs = append(slices.Delete(svcs, i, i+1), drain.OverflowKey)
+	}
+	for _, svc := range svcs {
+		cs := st.Templates[svc]
+		// Older versions could save a service name that is not valid UTF-8 (it breaks every
+		// /metrics scrape); the cleaned name differs from svc, so it takes the fold path below.
+		m, used := s.pool.Get(cleanService(svc))
 		m.Lock()
 		s.tmplMu.Lock()
 		for i := len(cs) - 1; i >= 0; i-- { // oldest first so the LRU order survives
@@ -192,6 +202,7 @@ func (s *Server) load() error {
 		m.Unlock()
 	}
 	np, nl := 0, 0
+	st.Logs = validSnaps(st.Logs) // their service label is a pool key: same rule as above
 	if st.Step != s.step {
 		slog.Warn("snapshot step differs; metric and log series not restored",
 			"old_step", time.Duration(st.Step)*time.Second, "new_step", s.cfg.Step,
@@ -241,6 +252,13 @@ func (s *Server) load() error {
 	slog.Info("state loaded", "saved_at", st.SavedAt, "templates", nt, "metric_series", np, "log_series", nl,
 		"findings", nf)
 	return nil
+}
+
+// validSnaps drops series with a label value that is not valid UTF-8 (saved by older versions).
+func validSnaps(snaps []series.Snap) []series.Snap {
+	return slices.DeleteFunc(snaps, func(sn series.Snap) bool {
+		return slices.ContainsFunc(sn.Labels, func(l series.Label) bool { return !utf8.ValidString(l.Value) })
+	})
 }
 
 // restoreFindings re-activates firing findings whose series (or new template) was restored, so

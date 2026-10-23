@@ -201,7 +201,7 @@ func (s *Server) evalSeries(sr *series.Series, last int64, scratch *[]float64, o
 // scale floor. A bucket that no series reached neither counts nor breaks the run. It resolves
 // when data returns or after AbsentTTL.
 func (s *Server) trackAbsent(sr *series.Series, info *seriesInfo, b int64, out *[]event) {
-	if !math.IsNaN(sr.At(b)) {
+	if !math.IsNaN(sr.At(b)) || info.undefData >= b {
 		if info.absent == absFiring {
 			*out = append(*out, event{typ: evResolve, key: absentPrefix + sr.Key})
 		}
@@ -485,13 +485,23 @@ func (s *Server) evalSignaturesLocked(sigs map[sigKey]sigCand, now time.Time) {
 func (s *Server) gc(promOpen, logOpen int64) {
 	s.gcRuns++
 	if s.gcRuns%100 == 0 {
+		// Only metadata that existed before the scan: a template created while it runs is not
+		// in live yet, and its metadata (levels, keyword level, signatures) must stay.
+		var cand []tmplKey
+		s.tmplMu.Lock()
+		for k, m := range s.tmpl {
+			if !m.novel {
+				cand = append(cand, k)
+			}
+		}
+		s.tmplMu.Unlock()
 		live := map[tmplKey]bool{}
 		s.pool.Each(func(svc string, m *drain.Miner) {
 			m.Clusters(func(c *drain.Cluster) { live[tmplKey{svc, c.ID}] = true })
 		})
 		s.tmplMu.Lock()
-		for k, m := range s.tmpl {
-			if !live[k] && !m.novel {
+		for _, k := range cand {
+			if m := s.tmpl[k]; m != nil && !live[k] && !m.novel {
 				delete(s.tmpl, k)
 			}
 		}

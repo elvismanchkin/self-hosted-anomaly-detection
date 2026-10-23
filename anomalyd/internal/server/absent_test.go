@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -222,5 +223,53 @@ func TestRestoredMetricSeriesKeptByGC(t *testing.T) {
 	(&absentRig{t: t, s: s2}).write(base+3*3600, base+3*3600+60, "auth")
 	if !s2.prom.Lookup(absentKey("checkout"), func(*series.Series) {}) {
 		t.Fatal("gc dropped a restored series with recent data")
+	}
+}
+
+// An SLO ratio (no anomaly_type, as in poc/prometheus/anomaly-alerts.yml) evaluates to NaN (0/0)
+// while a service has no traffic. Prometheus keeps sending the series with NaN values: that is
+// not an absent series. A staleness marker followed by nothing is.
+func TestNaNRatioIsNotAbsent(t *testing.T) {
+	staleMarker := math.Float64frombits(staleNaN)
+	for _, tc := range []struct {
+		name    string
+		v       float64
+		absent  bool
+		samples bool // keep sending samples after the stop
+	}{
+		{"nan 0/0", math.NaN(), false, true},
+		{"staleness marker then nothing", staleMarker, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := New(absentConfig())
+			var enc promrw.Encoder
+			write := func(from, to int64, ratio float64, sendRatio bool) {
+				req := promrw.Series{Labels: [][2]string{{"__name__", "anomaly:svc:requests:rate1m"},
+					{"anomaly_type", "requests"}, {"service", "checkout"}}}
+				slo := promrw.Series{Labels: [][2]string{{"__name__", "slo:svc:error_ratio:rate5m"}, {"service", "batch"}}}
+				for ts := from; ts < to; ts += 60 {
+					req.Samples = append(req.Samples, promrw.Sample{Value: 100, Timestamp: ts * 1000})
+					slo.Samples = append(slo.Samples, promrw.Sample{Value: ratio, Timestamp: ts * 1000})
+				}
+				b := []promrw.Series{req}
+				if sendRatio {
+					b = append(b, slo)
+				}
+				if rec := post(t, s.Handler(), "/api/v1/write", "application/x-protobuf", enc.Encode(b)); rec.Code != http.StatusNoContent {
+					t.Fatalf("remote write: %d", rec.Code)
+				}
+				s.Evaluate(time.Now())
+			}
+			base := time.Now().Unix()/60*60 - 6*3600
+			write(base, base+3*3600, 0.002, true)
+			t1 := base + 3*3600
+			write(t1, t1+60, tc.v, true) // the NaN, or the staleness marker
+			for i := int64(1); i < 6; i++ {
+				write(t1+60*i, t1+60*(i+1), tc.v, tc.samples)
+			}
+			if got := findingBy(s, kindMetricAbsent, "service", "batch") != nil; got != tc.absent {
+				t.Fatalf("AnomalydSeriesAbsent for slo ratio = %v, want %v", got, tc.absent)
+			}
+		})
 	}
 }
