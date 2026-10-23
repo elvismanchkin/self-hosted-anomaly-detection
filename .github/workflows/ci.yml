@@ -16,6 +16,7 @@ env:
   PROMETHEUS_VERSION: 3.14.0
   ALERTMANAGER_VERSION: 0.34.0
   OTELCOL_VERSION: 0.160.0
+  KUBECONFORM_VERSION: 0.8.0
   PROMQL_ANOMALY_DETECTION_VERSION: 0.2.1 # upstream rules, fetched (not vendored), see poc/README.md
 
 jobs:
@@ -41,6 +42,18 @@ jobs:
         run: go test -race -count=1 ./...
       - name: build
         run: CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/anomalyd
+      - name: fuzz network decoders and the tokenizer (20 s each)
+        run: |
+          for t in promrw/FuzzDecode server/FuzzHandlePush drain/FuzzTokenize; do
+            go test -run='^$' -fuzz="^${t#*/}\$" -fuzztime=20s "./internal/${t%/*}"
+          done
+      - name: upload fuzz crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: anomalyd/internal/*/testdata/fuzz/
+          if-no-files-found: ignore
 
   python:
     name: PoC scripts (Python)
@@ -84,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: install promtool, amtool, otelcol-contrib
+      - name: install promtool, amtool, otelcol-contrib, kubeconform
         run: |
           mkdir -p "$HOME/bin"
           gh=https://github.com
@@ -94,6 +107,8 @@ jobs:
             tar xz -C "$HOME/bin" --strip-components=1 "alertmanager-$ALERTMANAGER_VERSION.linux-amd64/amtool"
           curl -sSfL "$gh/open-telemetry/opentelemetry-collector-releases/releases/download/v$OTELCOL_VERSION/otelcol-contrib_${OTELCOL_VERSION}_linux_amd64.tar.gz" |
             tar xz -C "$HOME/bin" otelcol-contrib
+          curl -sSfL "$gh/yannh/kubeconform/releases/download/v$KUBECONFORM_VERSION/kubeconform-linux-amd64.tar.gz" |
+            tar xz -C "$HOME/bin" kubeconform
           echo "$HOME/bin" >> "$GITHUB_PATH"
       - name: fetch upstream adaptive/robust rules
         run: |
@@ -114,4 +129,13 @@ jobs:
           for f in poc/otel/*.yaml anomalyd/test/bench/*.yaml; do
             echo "== $f"
             otelcol-contrib validate --config="$f"
+          done
+      - name: kubeconform -strict
+        # Only built-in kinds so far, so no -ignore-missing-schemas: an unknown kind fails.
+        run: kubeconform -strict -summary anomalyd/deploy/*.yaml
+      - name: Grafana dashboards parse
+        run: |
+          for f in anomalyd/deploy/grafana/*.json; do
+            jq -e '.uid and .schemaVersion == 39 and (.panels | length > 0)' "$f" >/dev/null ||
+              { echo "::error::$f: not JSON, or no uid, schemaVersion 39 or panels"; exit 1; }
           done

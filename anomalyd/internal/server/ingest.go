@@ -422,7 +422,9 @@ func (s *Server) classifyLocked(m *tmplMeta, text string) {
 func (s *Server) markLogStart(now time.Time) { s.logStart.CompareAndSwap(0, now.Unix()) }
 
 func cleanService(svc string) string {
-	svc = strings.TrimSpace(svc)
+	// Invalid UTF-8 (raw bytes from /api/v1/logs, or a rune cut in half) would make Prometheus
+	// fail the whole /metrics scrape and Alertmanager reject the alert.
+	svc = strings.TrimSpace(strings.ToValidUTF8(svc, ""))
 	if svc == "" {
 		return "unknown"
 	}

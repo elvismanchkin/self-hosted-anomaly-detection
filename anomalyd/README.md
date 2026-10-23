@@ -24,6 +24,7 @@ Sections:
 [How detection works](#how-detection-works) ·
 [Resource model](#resource-model) ·
 [Wiring it into our stack](#wiring-it-into-our-stack) ·
+[Grafana dashboards](#grafana-dashboards) ·
 [Verification](#verification-2026-09-15) ·
 [Known limitations](#known-limitations)
 
@@ -427,10 +428,11 @@ A distroless image has no shell and no package manager. `-X main.version` sets t
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(git describe --tags --always)" -o anomalyd ./cmd/anomalyd && docker build -t anomalyd .
 ```
 
-**Grafana** can plot `anomalyd_score` together with `anomalyd_expected` and
-`anomalyd_band_upper`/`anomalyd_band_lower`. The server strips `anomaly_*` labels from these
-gauges. Otherwise the upstream promql-anomaly-detection rules would pick them up as inputs and
-fail with "same labelset".
+**Grafana** dashboards ship in [deploy/grafana/](deploy/grafana/), see
+[Grafana dashboards](#grafana-dashboards). They plot `anomalyd_score` together with
+`anomalyd_expected` and `anomalyd_band_upper`/`anomalyd_band_lower`. The server strips
+`anomaly_*` labels from these gauges. Otherwise the upstream promql-anomaly-detection rules
+would pick them up as inputs and fail with "same labelset".
 
 The server has these HTTP endpoints:
 
@@ -461,6 +463,52 @@ Self-metrics on `/metrics` include these:
   show template churn. Steady evictions mean that `--drain-max-templates` is too small for the
   service, or that its lines carry variables that the masks miss.
 
+## Grafana dashboards
+
+[deploy/grafana/](deploy/grafana/) holds four dashboards for Grafana 11.x (`schemaVersion` 39)
+and a file-provisioning example. Each dashboard has a data source variable, so no data source
+UID is hard-coded.
+
+| File | What it shows |
+|---|---|
+| `anomalyd-service.json` | One service. Each metric input (the recording rule) against `anomalyd_expected`, with the band filled between `anomalyd_band_lower` and `anomalyd_band_upper`. `abs(anomalyd_score)` with the threshold line. Log lines per bucket by level. Buckets over the threshold are marked as annotations. |
+| `anomalyd-overview.json` | All services. `topk(20, abs(anomalyd_score))` as a table and over time, `anomalyd_findings_active` by kind, and a service × time heatmap (status-history panel) of the anomaly rate. |
+| `anomalyd-health.json` | anomalyd itself: evaluation duration, series held, dropped and rejected input, remote-write lag, agent line and push rates, templates per service, memory. |
+| `anomalyd-findings.json` | Optional. The findings from `GET /api/v1/findings` as tables. |
+
+To provision them:
+
+1. Copy the JSON files to `/var/lib/grafana/dashboards/anomalyd`.
+2. Copy [dashboards.yaml](deploy/grafana/dashboards.yaml) to
+   `/etc/grafana/provisioning/dashboards/`.
+3. Restart Grafana. The dashboards appear in the `anomalyd` folder.
+
+With the Grafana Helm chart sidecar, put only the JSON files in a ConfigMap labelled
+`grafana_dashboard: "1"` instead.
+
+Notes:
+
+- **Threshold.** Set the `--threshold` variable to the server's `--threshold` (default 4). It
+  draws the threshold line. It also rebuilds the observed log count, which anomalyd does not
+  export: observed = expected + score × (upper − expected) / threshold.
+- **Flags.** The bands and the log panels need `--export-bands` (on by default). The template
+  panel needs `--export-template-scores` (off by default).
+- **Observed metric.** It is the recording rule itself. So the Prometheus data source must be
+  the one that records it. Each band panel expects one series per service and rule, which
+  `sum by (service)` gives.
+- **Raw scores.** The overview and the anomaly rate show scores before `--for`, direction and
+  `--log-min-count`. So they show more than the findings do. The anomaly rate is the share of
+  a service's series with |score| at or above a variable (default 2).
+- **Findings dashboard.** It needs the
+  [Infinity](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/) plugin
+  (`yesoreyeram-infinity-datasource`) and an Infinity data source. Pick an Infinity release
+  that your Grafana supports: 4.x needs 11.6.11 or later, 3.11 needs 11.6, and 3.7.1 runs on
+  10.4.8 and later. Set the `anomalyd URL` variable to an address of the server that the
+  Grafana backend can reach. anomalyd needs no Grafana token.
+- **Newer self-metrics.** A collapsed row on the health dashboard plots `anomalyd_snapshot_*`,
+  `anomalyd_agent_last_push_timestamp_seconds` and `anomalyd_templates_created_total`. These
+  metrics are newer than the rest. A server without them shows "No data" in that row.
+
 ## Verification (2026-09-15)
 
 All checks used synthetic data. Nothing touched our production systems.
@@ -474,7 +522,9 @@ All checks used synthetic data. Nothing touched our production systems.
 | Benchmarks | `go test -bench . ./internal/...` | Drain add 279 ns/line, tokenize 361 ns, extract 226 ns, score 110 µs full / 9 µs cached |
 | Footprint | `ANOMALYD_FOOTPRINT=1 go test ./internal/server -run Footprint -v` | 291 MB heap. Eval 841 ms cold / ~1 ms warm on one core. |
 | End to end | [test/e2e/run.sh](test/e2e/run.sh) (Docker, ~14 min) | PASS, see below |
-| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid |
+| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid. CI runs it on `deploy/*.yaml`. |
+| Fuzzing (2026-10-23) | `go test -run='^$' -fuzz=<target> -fuzztime=60s` for `FuzzDecode` (promrw), `FuzzHandlePush` (server), `FuzzTokenize` (drain) | No panic. `FuzzHandlePush` also checks that service names stay valid UTF-8: the 128-byte cut could split a rune. Fixed, with that input as a seed in `internal/server/testdata/fuzz`. CI fuzzes each target for 20 s. |
+| Grafana dashboards (2026-10-23) | Grafana 11.6.0 with [dashboards.yaml](deploy/grafana/dashboards.yaml), Prometheus v3.14.0 and Infinity 3.11.1, over a local server, agent and generators with an injected error burst. Every panel query through Grafana's `/api/ds/query`, and the panels rendered to images. | All four dashboards load. Every query returns data, except the newer self-metrics row. The band fill, threshold lines, annotations and heatmap render as intended. |
 | Routing through the repo's Alertmanager config | `amtool config routes test` against [../poc/prometheus/alertmanager.yml](../poc/prometheus/alertmanager.yml) (v0.34.0) | All three finding kinds → `llm-triage` + `chat-anomalies` (note 3) |
 | One-core comparison with the OTel `drain` processor | [test/bench/compare.sh](test/bench/compare.sh), plain and `CONTAINER=cri` | See [Why build this](#why-build-this-instead-of-using-the-python-pieces) |
 
@@ -489,6 +539,8 @@ Notes:
    - findings → Alertmanager payload, novelty and snapshot restore
    - keyword severity, signature findings and absent series, each across a restart
    - the raw-log endpoint
+   - fuzz targets for the remote-write decoder, agent pushes (plain and gzip) and the
+     tokenizer
 2. We also wrapped the same lines with `gen logs --container …`. Results:
    - CRI: 1.48–1.60 M lines/s
    - Docker json-file: 0.54–0.59 M lines/s, because of the second JSON decode
