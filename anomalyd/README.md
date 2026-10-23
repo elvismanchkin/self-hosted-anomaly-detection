@@ -60,7 +60,8 @@ The binary has two roles:
   - receives template counts from the agents.
   - scores every series against a seasonal-median + MAD baseline and detects new log templates.
   - sends findings to Alertmanager (API v2) with our `tier`/`severity` conventions.
-  - exposes scores and bands on `/metrics` for Grafana.
+  - exposes scores and bands on `/metrics` for Grafana, with dashboards in
+    [deploy/grafana/](deploy/grafana/).
   - serves findings as JSON on `/api/v1/findings`. This can be the bundle source for large
     language model (LLM) triage.
 
@@ -250,9 +251,11 @@ What this means for 200 GB–2 TB/day of logs:
     default list, so keep `errors=0.001` in it.
   - A series must arrive more often than every `--absent-buckets` × `--step`. A recording rule
     that runs less often looks absent between its runs.
-  - It resolves when data returns, or `--absent-ttl` (default 24 h) after the series stopped,
-    for a service that was shut down on purpose. After that, the series is dropped once a full
-    ring has gone by without data.
+  - A NaN or ±Inf sample, such as 0/0 in a ratio rule while a service has no traffic, counts as
+    arriving. Only a staleness marker, or no sample at all, counts as missing.
+  - It resolves when data returns, or `--absent-ttl` (default 24 h, 0 = only when data
+    returns) after the series stopped, for a service that was shut down on purpose. After that,
+    the series is dropped once a full ring has gone by without data.
 - **Merging templates across hosts.** Each agent sends its masked template text. The server
   re-clusters those texts with its own Drain instance per service. This gives one stable
   `template_id` per service across all hosts. Another host, or an agent after a restart, may
@@ -359,6 +362,7 @@ line. Lines that start with `#` and blank lines are skipped.
   addresses `<IP>`, and words that Drain generalised read `<*>`. Write `<NUM>`, not `\d+`.
 - The name becomes the `signature` label. It may use letters, digits, `_`, `.` and `-`.
 - A bad line stops the server at start-up with an error that names the line.
+- The server reads the file once, at start-up. Restart it after a change.
 - `GET /api/v1/templates` shows which signatures each template matches.
 
 ```text
@@ -403,6 +407,11 @@ anomalyd agent --path '/var/log/containers/*.log' --container auto --service-fro
     is freed.
 - **Heartbeat.** The agent pushes every `--flush-interval`, also when it has no counts. That
   empty push is a heartbeat: the server sees the agent alive, but does not take it as log data.
+  Upgrade the server before the agents. A server from before heartbeats takes the first empty
+  push as the start of log data, so a quiet agent ends `--novelty-warmup` early and the first
+  templates after it fire `AnomalydLogNewTemplate`. An agent from before heartbeats updates
+  `anomalyd_agent_last_push_timestamp_seconds` only when it has lines, so an idle one looks
+  stale.
 - **Step.** The server's `--step` must be a multiple of the agent's `--step`. Otherwise the
   counts would land in the wrong buckets. The server refuses such a push with HTTP 400 and
   counts it in `anomalyd_log_push_rejected_total{reason="step"}`. The agent logs the server's
@@ -459,6 +468,8 @@ Self-metrics on `/metrics` include these:
   Prometheus scrapes both, select by `job`.
 - `anomalyd_log_push_rejected_total{reason="step"}` counts pushes refused for their step. They
   are also in `anomalyd_log_push_errors_total`.
+- `anomalyd_findings_active{kind}` counts firing findings per kind: `metric`, `metric_absent`,
+  `log_template`, `log_volume`, `log_new_template` and `log_signature`.
 - `anomalyd_templates_created_total{service}` and `anomalyd_templates_evicted_total{service}`
   show template churn. Steady evictions mean that `--drain-max-templates` is too small for the
   service, or that its lines carry variables that the masks miss.
@@ -593,8 +604,9 @@ We did not verify:
 - **Drain merges look-alike lines**, the same as Drain3. For example, `Cache hit`/`Cache miss`
   share one template. Tune `--drain-sim-th`/`--drain-depth` per log family, or add masks.
 - **First-seen templates can carry unmasked words**, such as a user name without digits. They
-  keep them until Drain generalises them. Review masks before you route template text to chat
-  or an LLM.
+  keep them until Drain generalises them. The masker also replaces only the first e-mail address
+  in a token, so `to=a@x.com,b@y.com` keeps `b@y.com`. Review masks before you route template
+  text to chat or an LLM.
 - **Agents push at least once**. So a retry after a timeout can double-count one push. The
   agent does not save its file offsets. So it misses the lines written while it is down.
 - **Counts are dated when the agent reads the line**, not by the timestamp in the line. A
@@ -611,15 +623,26 @@ We did not verify:
   backfill covers metrics. Log series start in cold-start mode (recent median) until a day of
   counts exists.
 - **Keywords only see fixed words**. When Drain turns a keyword into `<*>` (`Caught <*>` from
-  two exception names), the template loses its keyword level. Signatures see the same text.
+  two exception names), the template loses its keyword level. Signatures see the same text. The
+  stream does not count either: the agent does not tell the server that a line came from
+  stderr, so stderr alone does not raise the severity.
 - **Absence needs a scored series**. A series is reported absent only if remote write sent it,
   and it was scored, in this process. So a series that stops while anomalyd is down is not
   reported after the restart. A renamed series (a label changed) looks absent until
   `--absent-ttl`.
+- **Absence is for metric series only**. A log template that stops, such as a batch job's last
+  line, fires only a template-rate drop, and only if it has enough lines (`--log-min-count`).
 - **Absence trusts the data clock**. A bucket counts as missing once any other series reached
   it. With several Prometheus servers writing to one anomalyd, one that stops makes all its
   series absent. While Prometheus sends a backlog, its remote-write shards can be minutes
   apart, and a series that is only late can look absent for a moment.
+- **A stopped agent is not named on findings**. A volume-down finding does not say that the
+  agent that carried the service's lines stopped. Check
+  `anomalyd_agent_last_push_timestamp_seconds` or `/api/v1/agents`. The server does not save its
+  agent list: after a restart an agent appears again only when it pushes. So an agent that died
+  while the server was down is missing, not stale.
+- **Snapshots keep firing findings only**. After a restart, `/api/v1/findings` has no resolved
+  findings until new ones resolve.
 - **One season per source**, set by `--prom-season` and `--log-season`. Holidays and multiple
   seasons at once are out of scope for the PoC. Multiple seasons need a method such as
   [MSTL](https://arxiv.org/abs/2107.13462) (seasonal-trend decomposition for multiple seasonal

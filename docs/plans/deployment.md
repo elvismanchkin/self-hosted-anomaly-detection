@@ -163,11 +163,12 @@ Pin exact tags. Upgrade one component at a time (section 14).
 | filebeat-stdout | `docker.elastic.co/beats/filebeat:9.5.3` | DaemonSet | today's Filebeat DaemonSet (renamed in place) | Filebeat must not be newer than ES. On an 8.19 cluster use `8.19.x`. |
 | filebeat-rawfile | same image | DaemonSet, only on labelled nodes | – | new |
 | findings-shipper | same image | Deployment, 1 replica | – | `httpjson` input |
-| anomalyd agent | `registry.internal/anomalyd:<git-sha>` | DaemonSet ×2 (stdout, files) | – | built from [anomalyd/Dockerfile](../../anomalyd/Dockerfile), Go 1.26+, distroless `static-debian13:nonroot` |
+| anomalyd agent | `registry.internal/anomalyd:<git-sha>` | DaemonSet ×2 (stdout, files) | – | built from [anomalyd/Dockerfile](../../anomalyd/Dockerfile), Go 1.26+, distroless `static-debian13:nonroot`. Build with `-ldflags "-X main.version=$(git describe --tags --always)"`: `anomalyd version` and `anomalyd_build_info` then name the build |
 | anomalyd server | same image | StatefulSet, 1 replica, PVC | – | single instance until the HA code of section 15 exists |
 | ElastAlert2 | `jertel/elastalert2:2.31.0` | Deployment, 1 replica | – | rules in [poc/logs/elastalert2](../../poc/logs/elastalert2/) |
 | Prometheus | existing; validated with 3.14.0 | existing | – | adds one `remote_write` block |
 | Alertmanager | existing; validated with 0.34.0 | existing | – | adds routes from [alertmanager.yml](../../poc/prometheus/alertmanager.yml) |
+| Grafana | existing; dashboards checked on 11.6.0 | existing | – | adds the anomalyd dashboards from [deploy/grafana](../../anomalyd/deploy/grafana/) (`schemaVersion` 39, Grafana 11.x); the optional findings dashboard needs the Infinity plugin (section 6) |
 | Kubernetes | ≥ 1.30 (UNVERIFIED as our minimum; `subPathExpr` and PSA labels are GA well before that) | existing | – | kubelet log rotation settings change (section 4.3) |
 | json_exporter (optional) | `quay.io/prometheuscommunity/json-exporter` | sidecar | – | turns Filebeat's `/stats` into Prometheus metrics (section 17) |
 
@@ -534,6 +535,10 @@ The known gap: if the shipper is down for longer than it takes the server to res
 findings, the oldest resolve events are lost. Alertmanager still has them. Item N6 in section 15
 closes this gap.
 
+Run an anomalyd build that has commit `6a755c9` (batch 1 of
+[feature-gaps.md](feature-gaps.md#batch-1-built)). Before it, a poll of `/api/v1/findings` while
+the server evaluated could crash the server, and this poller asks every 30 s.
+
 **Optional, for all detectors at once:** also send Alertmanager's webhook (the `chat-anomalies`
 receiver) to a Filebeat `http_endpoint` input and on to `logs-alerts.notifications-<cluster>`.
 This puts ElastAlert2, PromQL band and anomalyd notifications in one Kibana view. It shows
@@ -547,8 +552,8 @@ because an ES outage would then hide itself.
 | Reader | Endpoint | Key series |
 |---|---|---|
 | filebeat-* | `:5066/stats` via json_exporter | `libbeat.output.events.acked`, `.failed`, `libbeat.pipeline.queue.filled.pct` (disk queue fill), `filebeat.harvester.open_files` |
-| anomalyd agent | `:9401/metrics` | `anomalyd_agent_lines_total`, `anomalyd_agent_push_errors_total`, `anomalyd_agent_backlog_dropped_total`, `anomalyd_agent_templates` |
-| anomalyd server | `:9400/metrics` | `anomalyd_log_lines_total`, `anomalyd_remote_write_errors_total`, `anomalyd_series_dropped_total`, `anomalyd_alert_errors_total`, `anomalyd_eval_duration_seconds` |
+| anomalyd agent | `:9401/metrics` | `anomalyd_agent_lines_total`, `anomalyd_agent_push_errors_total`, `anomalyd_agent_backlog_dropped_total`, `anomalyd_agent_templates`, `anomalyd_agent_build_info` |
+| anomalyd server | `:9400/metrics` | `anomalyd_log_lines_total`, `anomalyd_remote_write_errors_total`, `anomalyd_series_dropped_total`, `anomalyd_alert_errors_total`, `anomalyd_eval_duration_seconds`; the server's view of each agent: `anomalyd_agent_last_push_timestamp_seconds{agent}` (heartbeats included), `anomalyd_log_push_rejected_total{reason="step"}`; snapshots: `anomalyd_snapshot_failures_total`, `anomalyd_snapshot_last_success_timestamp_seconds`; `anomalyd_build_info` |
 
 Filebeat's own Stack Monitoring (`monitoring.enabled`) can also go to ES and Kibana. If we use
 it, point it at a separate monitoring cluster where one exists.
@@ -571,12 +576,15 @@ anomalyd server \
   --backfill-url=http://prometheus.monitoring.svc:9090 \
   --backfill-match='{__name__=~"anomaly:svc:.+"}' \
   --abs-floor='errors=0.001,latency=5' \
+  --absent-buckets=3 --absent-ttl=24h \
   --log-season=24h --log-seasons=3 --log-min-count=10 \
   --max-log-series=50000 --max-services=1000 --drain-max-templates=2000 \
   --novelty-warmup=1h --novelty-min-lines=5 --novelty-window=15m --novelty-ttl=1h \
+  --signature-file=/etc/anomalyd/signatures.txt \
   --alertmanager-url=http://alertmanager-0.alertmanager.monitoring.svc:9093 \
   --alertmanager-url=http://alertmanager-1.alertmanager.monitoring.svc:9093 \
-  --external-url=https://anomalyd.internal
+  --external-url=https://anomalyd.internal \
+  --log-format=json --log-level=info
 # NEW (N5): --alert-label=cluster=prod   (needed when several clusters share one Alertmanager)
 # NEW (N1): --tls-cert-file, --tls-key-file, --client-ca-file, --auth-token-file
 ```
@@ -585,6 +593,38 @@ anomalyd server \
   Prometheus does.
 - `--novelty-warmup` also applies after a restart without a state file. With the PVC, the restored
   templates stay known.
+- **Absent series** (`--absent-buckets`, default 3, 0 = off; `--absent-ttl`, default 24 h). A
+  remote-written series that misses 3 buckets in a row, while other series still arrive, fires
+  `AnomalydSeriesAbsent` (tier 2). It resolves when data returns, or `--absent-ttl` after the
+  series stopped (a service that was shut down on purpose). What it needs from us:
+  - Recording rules summed per service, with no pod or instance label. Otherwise every pod
+    replacement fires it.
+  - Each series more often than every `--absent-buckets` × `--step` (15 min here). A rule
+    that runs less often looks absent between its runs.
+  - A last expected value above the `--abs-floor` of its `anomaly_type` (zero without one). To
+    keep near-idle request series out, add for example `requests=0.1`; this also floors their
+    score scale. The flag replaces the whole list, so extend the one above:
+    `--abs-floor='errors=0.001,latency=5,requests=0.1'`.
+  - One Prometheus per anomalyd, or an HA pair that writes the same series. A bucket counts as
+    missing once any other series reached it, so if one of several Prometheus servers stops,
+    all its series go absent.
+- **Signatures** (`--signature-file`). Known-bad templates, one `name: RE2 regex` per line,
+  matched against the masked template text (numbers read `<NUM>`). A template that matches fires
+  `AnomalydLogSignature` (tier 1) on its first lines, at most once per service and signature per
+  24 h. The file comes from the ConfigMap `anomalyd-signatures` (section 9.2).
+  - The server reads it once, at start-up. After a change, run
+    `kubectl -n monitoring rollout restart sts/anomalyd`.
+  - A bad line stops the server, with an error that names the line. With one replica, that
+    means no anomalyd findings until it is fixed. Test changes in staging, and roll back the
+    ConfigMap if the pod crash-loops (section 16).
+  - Start with a short list (out of memory, disk full, expired certificate). Add only lines that
+    always deserve a look. Leave the flag out to run without signatures.
+- **Logs.** `--log-format=json` makes anomalyd's own log lines JSON, so filebeat-stdout ships
+  them as fields. `--log-level` is `info` by default; use `debug` only for short checks. Both
+  flags work on every subcommand, so the agents take them too.
+- **Version.** `anomalyd version` prints the version, the git revision and the Go version.
+  `anomalyd_build_info{version,revision,goversion}` on `/metrics` shows what runs; the agents
+  have `anomalyd_agent_build_info`.
 
 **Agent for container stdout** (DaemonSet `anomalyd-agent`):
 
@@ -595,7 +635,8 @@ anomalyd agent \
   --service-from-path='_(?P<service>[^_]+)-[0-9a-f]{64}\.log$' \
   --server=http://anomalyd.monitoring.svc:9400 \
   --name=$(NODE_NAME) --listen=:9401 \
-  --flush-interval=10s --step=60 --max-services=200 --max-backlog=100000
+  --flush-interval=10s --step=60 --max-services=200 --max-backlog=100000 \
+  --log-format=json
 ```
 
 - The regex takes the **container** name. Generic container names (`app`, `main`) merge
@@ -606,6 +647,19 @@ anomalyd agent \
 - The agent's service name must match what ES shows as `service.name`. Otherwise the Kibana
   drill-down (section 8.3) opens the wrong service. Both use `service.name` from JSON first. Both
   fall back to the container name. Keep it that way.
+- **Step.** The agent's `--step` is in seconds. It must divide the server's `--step` (5m =
+  300 s): 60, 30 or 10 work, 120 does not. Otherwise the server answers every push with HTTP
+  400 ("agent step 120s does not divide server step 300s") and counts it in
+  `anomalyd_log_push_rejected_total{reason="step"}`. The agent keeps the counts and retries, so
+  a mismatch shows as push errors, then as backlog drops. Change the server's `--step` only to a
+  multiple of every agent's step. A new server `--step` also starts all series empty: the
+  snapshot's rings no longer fit (anomalyd logs a warning).
+- **Heartbeat.** The agent pushes every `--flush-interval`, also with no lines. So the server's
+  `anomalyd_agent_last_push_timestamp_seconds{agent}` stays fresh on an idle node. An old value
+  means that the agent is down, cannot reach the server, or is rejected. `GET /api/v1/agents`
+  lists each agent with its last push, step, pushes, rejected pushes, lines and services.
+- **Name.** `--name` is the `agent` label. Keep it unique per process: `$(NODE_NAME)` here and
+  `$(NODE_NAME)-files` below.
 
 **Agent for raw files** (DaemonSet `anomalyd-agent-files`, a separate process):
 
@@ -615,7 +669,7 @@ anomalyd agent \
   --format=text \
   --service-from-path='^/var/log/apps/(?P<service>[^/]+)/' \
   --server=http://anomalyd.monitoring.svc:9400 \
-  --name=$(NODE_NAME)-files --listen=:9402
+  --name=$(NODE_NAME)-files --listen=:9402 --log-format=json
 # NEW (N2): --multiline-start='^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}'   (required for stack traces)
 ```
 
@@ -667,6 +721,47 @@ route:
 receivers:
   - name: blackhole                          # a receiver with no configs drops notifications
 ```
+
+The two alerts that batch 1 of [feature-gaps.md](feature-gaps.md#batch-1-built) added need no
+new route. `AnomalydLogSignature` carries `tier="1"` and `AnomalydSeriesAbsent` carries
+`tier="2"`, so they follow the same routes as the other anomalyd alerts:
+
+| Alert | `tier` | `severity` | Fires when |
+|---|---|---|---|
+| `AnomalydMetricAnomaly` | 2 | warning | a remote-written series leaves its seasonal band |
+| `AnomalydSeriesAbsent` | 2 | warning | a remote-written series stops arriving while others still arrive |
+| `AnomalydLogNewTemplate` | 1 | warning or info | a template first seen after warm-up reaches `--novelty-min-lines` |
+| `AnomalydLogSignature` | 1 | warning | a template that matches `--signature-file` gets lines |
+| `AnomalydLogTemplateRate` | 2 | warning or info | one template's line rate leaves its band |
+| `AnomalydLogVolume` | 2 | warning or info | a service's lines per level leave their band |
+
+The [anomalyd README](../../anomalyd/README.md#how-detection-works) has the labels and the
+severity rules.
+
+**Grafana** (existing, added dashboards): the files in
+[anomalyd/deploy/grafana](../../anomalyd/deploy/grafana/) are a service, an overview and a health
+dashboard, plus an optional findings dashboard. They target Grafana 11.x (`schemaVersion` 39).
+Provision them one of two ways:
+
+- **File provisioning.** Copy the JSON files to `/var/lib/grafana/dashboards/anomalyd` and
+  [dashboards.yaml](../../anomalyd/deploy/grafana/dashboards.yaml) to
+  `/etc/grafana/provisioning/dashboards/`, then restart Grafana. The dashboards appear in the
+  `anomalyd` folder. The file sets `allowUiUpdates: false`, so change them in Git, not in the UI.
+- **Grafana Helm chart with the dashboard sidecar.** Put only the JSON files in a ConfigMap
+  labelled `grafana_dashboard: "1"` (section 9.1).
+
+Then:
+
+- The service, overview and health dashboards have a Prometheus data source variable. Pick the
+  Prometheus that scrapes anomalyd and records the anomaly inputs.
+- Set the `threshold` variable (shown as `--threshold`) to the server's `--threshold` (4 here).
+- The findings dashboard reads `/api/v1/findings` through the
+  [Infinity](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/) plugin. It
+  needs the plugin and an Infinity data source. Its `anomalyd URL` variable defaults to this
+  plan's address, `http://anomalyd.monitoring.svc:9400`. The server's NetworkPolicy must let
+  Grafana in (section 9.2). Leave the dashboard out if the plugin may not be installed.
+- The rest of the notes (flags the panels need, the newer self-metrics row) are in the
+  [anomalyd README](../../anomalyd/README.md#grafana-dashboards).
 
 ---
 
@@ -929,7 +1024,8 @@ deploy/
       filebeat-rawfile/   {serviceaccount,configmap,daemonset}.yaml
       anomalyd-agent/     {serviceaccount,daemonset}.yaml
       anomalyd-agent-files/{serviceaccount,daemonset}.yaml
-      anomalyd-server/    {serviceaccount,statefulset,service,networkpolicy,pdb}.yaml
+      anomalyd-server/    {serviceaccount,statefulset,service,networkpolicy,pdb,configmap-signatures}.yaml
+      grafana-dashboards/ {configmap}.yaml   # anomalyd/deploy/grafana/*.json, label grafana_dashboard: "1"
       findings-shipper/   {serviceaccount,configmap,deployment,networkpolicy}.yaml
       elastalert2/        {configmap-config,configmap-rules,deployment}.yaml
       node-cleanup/       {daemonset}.yaml   # prunes /var/log/apps dirs of deleted pods
@@ -1089,16 +1185,31 @@ spec:
       containers:
         - name: server
           image: registry.internal/anomalyd:<git-sha>
-          args: [server, --listen=:9400, --state-dir=/var/lib/anomalyd, "…flags of section 6…"]
+          args: [server, --listen=:9400, --state-dir=/var/lib/anomalyd, --signature-file=/etc/anomalyd/signatures.txt, "…flags of section 6…"]
           ports: [{name: http, containerPort: 9400}]
           resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: "2", memory: 2Gi}}
           securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           livenessProbe:  {httpGet: {path: /-/healthy, port: http}, periodSeconds: 20}
           readinessProbe: {httpGet: {path: /-/healthy, port: http}, periodSeconds: 10}  # NEW N8: /-/ready
-          volumeMounts: [{name: state, mountPath: /var/lib/anomalyd}]
+          volumeMounts:
+            - {name: state, mountPath: /var/lib/anomalyd}
+            - {name: signatures, mountPath: /etc/anomalyd, readOnly: true}   # read at start-up only
+      volumes:
+        - {name: signatures, configMap: {name: anomalyd-signatures}}
   volumeClaimTemplates:
     - metadata: {name: state}
       spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: anomalyd-signatures, namespace: monitoring}
+data:
+  # One "name: RE2 regex" per line, matched against the masked template text (section 6).
+  # The server reads it at start-up; after a change: kubectl -n monitoring rollout restart sts/anomalyd
+  signatures.txt: |
+    jvm-oom: (?i)OutOfMemoryError|out of memory
+    disk-full: No space left on device
+    tls-expired: x509: certificate has expired
 ---
 apiVersion: v1
 kind: Service
@@ -1118,9 +1229,9 @@ spec:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: logging}}
           podSelector: {matchExpressions: [{key: app.kubernetes.io/name, operator: In, values: [anomalyd-agent, anomalyd-agent-files]}]}
       ports: [{port: 9400}]
-    - from:        # Prometheus (remote_write + scrape), findings-shipper
+    - from:        # Prometheus (remote_write + scrape), findings-shipper, Grafana (findings dashboard only)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
-          podSelector: {matchExpressions: [{key: app.kubernetes.io/name, operator: In, values: [prometheus, findings-shipper]}]}
+          podSelector: {matchExpressions: [{key: app.kubernetes.io/name, operator: In, values: [prometheus, findings-shipper, grafana]}]}
       ports: [{port: 9400}]
   egress:
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]
@@ -1357,7 +1468,7 @@ HA design:
 | F4 | filebeat-stdout crash loop or bad config | stopped; resumes from the registry within the rotation window | **unaffected** | **unaffected** | unaffected | ES-side flatline for `logs-k8s.stdout-*` (ElastAlert2); `up == 0` | roll back that release only (section 16) |
 | F5 | raw-file profile misparses (grok) | unaffected | docs indexed with `error.message` | unaffected | unaffected | parse-failure panel; alert on rate > 1 % | fix the pipeline via the ES API; no node rollout |
 | F6 | mapping conflict or field explosion in one raw profile | unaffected (own data stream) | rejects go to the failure store, or are dropped and counted | unaffected | unaffected | `libbeat.output.events.dropped` > 0 | fix the mapping, then roll over the data stream |
-| F7 | anomalyd agent crash or OOM | unaffected | unaffected | that node's counts stop; restart tails from EOF, so lines written while it was down are not counted | unaffected | a small dip in volume series for that node's services; `AnomalydAgentDown` | restart; N3 removes the gap |
+| F7 | anomalyd agent crash or OOM | unaffected | unaffected | that node's counts stop; restart tails from EOF, so lines written while it was down are not counted | unaffected | a small dip in volume series for that node's services; `AnomalydAgentDown` (from the server's `anomalyd_agent_last_push_timestamp_seconds`, section 17) | restart; N3 removes the gap |
 | F8 | anomalyd server down | unaffected | unaffected | agents keep counts in the backlog (up to `--max-backlog` keys, then drop and count); Prometheus buffers remote write in its WAL (about 2 h) | poller gets errors, nothing is written | no anomalyd findings; `AnomalydServerDown` (meta) | restart; state restores from the PVC |
 | F9 | anomalyd server loses its PVC | – | – | cold start: novelty warm-up again, seasonal history only from backfill (metrics); logs start in cold-start mode for 1 day | – | a burst of `AnomalydLogNewTemplate` suppressed by warm-up | expected; keep `--novelty-warmup` ≥ 1h |
 | F10 | template explosion (unmasked ids in one service) | unaffected | unaffected | the service hits `--drain-max-templates` (LRU); server series cap is hit, then drops are counted | unaffected | `anomalyd_series_dropped_total` > 0, `anomalyd_agent_templates` high | add a mask, tune `--drain-sim-th`, or exclude the service |
@@ -1368,6 +1479,9 @@ HA design:
 | F15 | findings-shipper down | – | – | unaffected | findings missing in Kibana; lost only if more than 500 resolve during the gap | `up == 0`; ES flatline on findings | restart; N6 removes the loss window |
 | F16 | bad anomalyd release (false-positive storm) | – | – | – | Kibana shows it | chat noise | silence `source="anomalyd"` (R6); roll back the image |
 | F17 | network partition node ↔ monitoring | ES path may continue if ES is reachable | same | backlog, then drops (counted) | – | push errors | none needed; recovers |
+| F18 | one metric input stops (exporter down, recording rule broken, label renamed) | – | – | the series goes missing; its metric finding resolves after 3 missing buckets | – | `AnomalydSeriesAbsent` (tier 2) after `--absent-buckets` buckets | runbook R14; for a service shut down on purpose it resolves after `--absent-ttl` |
+| F19 | agent `--step` does not divide the server `--step` | unaffected | unaffected | every push of that agent gets HTTP 400; counts wait in its backlog, then drop | unaffected | `AnomalydAgentStepRejected`, then `AnomalydAgentDown` and `AnomalydAgentBacklogDropping` | runbook R12: fix the agent's `--step` |
+| F20 | slow or failing PVC for `--state-dir` | – | – | pushes and scoring continue: the snapshot runs in the background, and the last good file stays | – | `AnomalydSnapshotFailing`, `AnomalydSnapshotStale` | runbook R13; a restart meanwhile loses what changed since the last good snapshot |
 
 ---
 
@@ -1381,7 +1495,8 @@ cluster. For several clusters, run each phase on the least critical cluster firs
 - Run [roadmap Step 0](../roadmap.md#step-0-confirm-what-is-actually-running-half-a-day): ES
   version, license, `_xpack` features, current Filebeat version, config, input `id`, registry
   path and `file_identity`.
-- Build and scan the anomalyd image. Tag it with the git SHA.
+- Build and scan the anomalyd image. Tag it with the git SHA, and build with
+  `-X main.version` (section 3). `docker run --rm <image> version` must print that version.
 - Apply section 7 in a **staging** ES. Check the pipelines with `_simulate` on 1,000 real lines per
   source and profile. Check the templated pipeline name, `ignore_dynamic_beyond_limit`, the failure
   store and `logsdb` behaviour on our version.
@@ -1415,19 +1530,24 @@ cluster. For several clusters, run each phase on the least critical cluster firs
   - **recall**: real incidents from the incident log that anomalyd caught before the page or
     ticket, and by how many minutes;
   - **volume**: findings per service per day.
-- Tune `--threshold`, `--for`, `--log-min-count`, the masks and the service regex.
+- Tune `--threshold`, `--for`, `--log-min-count`, the masks and the service regex. Review every
+  `AnomalydLogSignature` and `AnomalydSeriesAbsent`: narrow or drop a signature that fires on a
+  healthy service, and fix recording rules that keep going absent (pod labels, slow rules).
+- Import the Grafana dashboards (section 6). The service dashboard is the tuning view: observed
+  against the band, and the score against the threshold.
 - Fault tests A8–A10 (kill the server, kill an agent, fill the backlog).
 - **Gate:**
   - ≥ 14 days of logs, so that 2 daily seasons are full;
   - precision ≥ 50 % for `AnomalydMetricAnomaly` and `AnomalydLogVolume`, and ≥ 30 % for
     template findings (targets to agree with the service owners);
-  - ≤ 5 findings per service per day at the 95th percentile;
+  - ≤ 5 findings per service per day at the 95th percentile, all six alerts counted;
   - no increase in ES or Filebeat errors caused by anomalyd.
 
 ### Phase 3: alerting to chat and tickets (2–4 weeks)
 
 - Remove the `blackhole` route. anomalyd findings follow the existing `tier=~"1|2"` route to
-  `chat-anomalies`, and optionally to `llm-triage`, grouped per service. The page inhibit rule
+  `chat-anomalies`, and optionally to `llm-triage`, grouped per service. This includes
+  `AnomalydLogSignature` (tier 1) and `AnomalydSeriesAbsent` (tier 2). The page inhibit rule
   mutes them while an SLO page fires for the service.
 - Services opt in one team at a time. Use a label allow-list in Alertmanager
   (`service=~"checkout|search|…"`) that grows every week.
@@ -1450,6 +1570,11 @@ cluster. For several clusters, run each phase on the least critical cluster firs
 ---
 
 ## 15. New code needed in anomalyd
+
+Batch 1 of [feature-gaps.md](feature-gaps.md#batch-1-built) added code that this plan now uses:
+the signature watchlist, absent series, the agent registry and step check, self-metrics,
+`anomalyd version` and the Grafana dashboards (sections 6 and 17). It closes none of the rows
+below.
 
 | # | Need | Priority | What to build | Workaround until then |
 |---|---|---|---|---|
@@ -1486,10 +1611,12 @@ Every component rolls back alone. None of these steps touches another sink.
 | ES pipelines and templates | re-apply the previous Git revision with `apply.sh`. A template change applies at the next rollover, so force `POST <ds>/_rollover` | documents indexed meanwhile keep their old parsing |
 | Final pipeline (template key) | remove `index.final_pipeline` from `logs-guardrails@settings` and roll over. The transform then gets no new keys; ElastAlert2 template rules go quiet (flatline expected) | none on the raw logs |
 | anomalyd agents | `helm uninstall anomalyd-agent anomalyd-agent-files` | none on ES; anomalyd log findings stop |
-| anomalyd server | `helm rollback anomalyd-server`. The snapshot format is gob and can change between versions. Keep a copy of the PVC snapshot before each upgrade (`kubectl cp`), and restore it together with the old image | if the format is incompatible: a cold start (F9) |
+| anomalyd server | `helm rollback anomalyd-server`. The snapshot is gob with a format version (`stateVersion`, 1 today). A binary refuses another version and starts cold. Releases that only add fields, such as batch 1 of [feature-gaps.md](feature-gaps.md#batch-1-built), read each other's snapshots. Keep a copy of the PVC snapshot before each upgrade (`kubectl cp`), and restore it together with the old image. Check `anomalyd_build_info` afterwards | if the format is incompatible: a cold start (F9) |
+| anomalyd signature list | apply the previous `anomalyd-signatures` ConfigMap from Git, then `kubectl -n monitoring rollout restart sts/anomalyd` | none |
 | anomalyd alerting (Phase 3 → 2) | put the `blackhole` route back | none |
 | Prometheus `remote_write` | remove the block; the WAL for it is released | none |
 | findings-shipper | `helm uninstall findings-shipper` | findings missing in Kibana only |
+| Grafana dashboards | provision the previous JSON files from Git (or remove the files or the ConfigMap) | none |
 
 ---
 
@@ -1524,7 +1651,9 @@ rollout. Documents that already failed keep `message` intact and can be re-parse
 
 **R5: anomalyd agent push errors or backlog drops.**
 `increase(anomalyd_agent_push_errors_total[10m]) > 0` on all nodes means the server is down or
-unreachable: R7. On one node, check the network policy and DNS. `anomalyd_agent_backlog_dropped_total`
+unreachable: R7. On one node, check the network policy and DNS. `GET /api/v1/agents` on the
+server shows that agent's last accepted push, its step and its rejected pushes; rejected pushes
+mean R12. `anomalyd_agent_backlog_dropped_total`
 rising means counts are being lost; raise `--max-backlog` only if the outage is expected to be
 long (memory grows with it).
 
@@ -1539,7 +1668,11 @@ masking problem: add the mask in a release, or raise `--drain-sim-th` for that f
 `kubectl -n monitoring logs sts/anomalyd --previous`. Frequent OOM means the series caps are too
 high for the limit: check `anomalyd_series` and raise the memory limit or lower
 `--max-log-series`. If the snapshot is corrupt (restore error in the log), move it aside and start
-cold (F9). Keep the file for analysis.
+cold (F9). Keep the file for analysis. A `state not loaded` warning with `state version` means a
+binary with another snapshot format: roll back the image (section 16) or accept the cold start.
+After a change to `--step` or to a season flag, the log has a WARN such as `snapshot step
+differs` with the old and new values. Then the series start empty and templates still restore;
+that is expected.
 
 **R8: Series or template cap reached (`anomalyd_series_dropped_total` rising).**
 `GET /api/v1/templates` and sort services by template count. The top offender usually logs a
@@ -1558,6 +1691,43 @@ kubelet removes the pod's directory) and every file in it is older than 7 days. 
 Stop filebeat-rawfile on that node. Remove the file's entry from its registry (filestream
 registry in `path.data`). Or copy the file to a one-off input path with a new `id`. Start it
 again. Never touch filebeat-stdout for this.
+
+**R12: An agent is silent or rejected (`AnomalydAgentDown`, `AnomalydAgentStepRejected`).**
+`GET /api/v1/agents` lists each agent's last accepted push, step and rejected pushes.
+
+- Rejected pushes: the agent's `--step` does not divide the server's `--step` (section 6). The
+  agent's log has the server's message (`agent step 120s does not divide server step 300s`). Fix
+  the agent's `--step` in its DaemonSet. The restart drops the counts that the agent held.
+- No pushes: check the agent pod on that node
+  (`kubectl -n logging get pods -o wide --field-selector spec.nodeName=<node>`), then R5.
+- The server knows only agents that pushed since it started, and forgets one after 24 h without
+  a push. So an agent that died while the server was down is missing, not stale. To catch that,
+  compare `count(anomalyd_agent_last_push_timestamp_seconds)` with the desired pods of both
+  agent DaemonSets (kube-state-metrics' `kube_daemonset_status_desired_number_scheduled`).
+- A volume-down finding does not say that its agent stopped (feature-gaps.md G6 defers
+  `cause=agent_silent`). Check this alert first when a service on one node goes quiet.
+
+**R13: Snapshots fail (`AnomalydSnapshotFailing`, `AnomalydSnapshotStale`).**
+Pushes and scoring go on: the snapshot runs in the background. The log has `snapshot failed`
+with the error. `previous snapshot still running` means that one snapshot takes longer than
+`--snapshot-interval`; `anomalyd_snapshot_duration_seconds` shows how long. Check the PVC
+(`kubelet_volume_stats_available_bytes` for its claim, and the storage class's latency; the
+image has no shell for `df`). A restart now loses what changed since
+`anomalyd_snapshot_last_success_timestamp_seconds`, so fix the PVC before any planned restart.
+
+**R14: `AnomalydSeriesAbsent`.**
+One remote-written series stopped while others still arrive.
+
+- One series: check its recording rule (`promtool`, or the rule's `/rules` status in
+  Prometheus) and the exporter behind it. A renamed label looks the same: the old series is
+  absent and a new one starts. It resolves when data returns, or after `--absent-ttl`.
+- Many series of one service: the service or its exporter is gone. If on purpose, silence it
+  until `--absent-ttl` resolves it.
+- Many series at once, of many services: a rule group failed, or one of several Prometheus
+  servers stopped writing (section 6). Silence `alertname="AnomalydSeriesAbsent"` and fix the input; R6 has the silence
+  command.
+- Series that come and go with pods: a recording rule keeps a pod or instance label. Sum it per
+  service, or set `--absent-buckets=0`.
 
 Meta alerts (all `tier="meta"`, routed to `chat-platform`):
 
@@ -1592,6 +1762,21 @@ groups:
       - alert: AnomalydAlertmanagerErrors
         expr: increase(anomalyd_alert_errors_total[15m]) > 0
         labels: {tier: meta, severity: warning}
+      # The rules below use self-metrics from batch 1 of feature-gaps.md (runbook R12, R13).
+      - alert: AnomalydAgentDown              # last accepted push, heartbeats included; 0 = none yet
+        expr: time() - anomalyd_agent_last_push_timestamp_seconds{agent!="_other"} > 120   # 12 × --flush-interval
+        for: 3m
+        labels: {tier: meta, severity: warning}
+      - alert: AnomalydAgentStepRejected
+        expr: increase(anomalyd_log_push_rejected_total{reason="step"}[15m]) > 0
+        labels: {tier: meta, severity: warning}
+      - alert: AnomalydSnapshotFailing
+        expr: increase(anomalyd_snapshot_failures_total[30m]) > 0
+        labels: {tier: meta, severity: warning}
+      - alert: AnomalydSnapshotStale          # 0 until the first save, one --snapshot-interval after start
+        expr: time() - anomalyd_snapshot_last_success_timestamp_seconds > 1800   # 6 × --snapshot-interval
+        for: 10m
+        labels: {tier: meta, severity: warning}
 ```
 
 Validate these with `promtool check rules` and a unit test like
@@ -1618,9 +1803,13 @@ Run each check in the phase given. **Pass** is the gate.
 | A10 | 2 | Findings reach Kibana | inject a synthetic new ERROR template on a test service (`anomalyd gen logs` style, or a test pod) | `AnomalydLogNewTemplate` appears in `/api/v1/findings`, then in `logs-anomalyd.findings-*` within 1 min, with a working `discover_url`; one doc on fire and one on resolve |
 | A11 | 2 | Shadow route holds | the injected finding of A10 | reaches Alertmanager (`amtool alert query source=anomalyd`) and **no** receiver notifies |
 | A12 | 2 | NetworkPolicy works | `curl` to `anomalyd.monitoring.svc:9400/api/v1/templates` from a pod in an app namespace | connection refused or timed out |
-| A13 | 3 | Routing | `amtool config routes test --verify.receivers=chat-anomalies,llm-triage source=anomalyd tier=2 severity=warning service=checkout` | as expected; the page inhibit rule mutes it (`amtool` with a firing `severity=page` for the same service) |
+| A13 | 3 | Routing | `amtool config routes test --verify.receivers=chat-anomalies,llm-triage source=anomalyd tier=2 severity=warning service=checkout`; again with `alertname=AnomalydLogSignature tier=1` and `alertname=AnomalydSeriesAbsent tier=2` | as expected; the page inhibit rule mutes it (`amtool` with a firing `severity=page` for the same service) |
 | A14 | 3 | Precision and volume | the weekly review from Phase 2 | the gate numbers of Phase 3 |
 | A15 | all | Rollback rehearsal | roll back filebeat-stdout one revision on the canary node; roll back anomalyd-server with the snapshot copy | no duplicates (A4 method); anomalyd restores without a novelty burst |
+| A16 | 2 | Agent registry and step check | block the canary node's agent from the server for 10 min (a NetworkPolicy, as in A5); run a test agent with `--step=120` | `AnomalydAgentDown` fires for the blocked agent and clears once it pushes again; an idle node's agent stays fresh (heartbeats); the test agent gets HTTP 400, `anomalyd_log_push_rejected_total{reason="step"}` rises and `AnomalydAgentStepRejected` fires |
+| A17 | 2 | Absent series | drop one service's request recording rule from `remote_write` (a `write_relabel_configs` drop) for 30 min | `AnomalydSeriesAbsent` for that series after 3 buckets (about 15 min), and nothing for the other series; it resolves within 2 buckets of the rule's return |
+| A18 | 2 | Signatures and snapshots | add a test signature to the ConfigMap, restart, and write one matching line on a test service; watch `anomalyd_snapshot_last_success_timestamp_seconds` | one `AnomalydLogSignature`, not a second within 24 h; in staging, a bad regex line keeps the server from starting and its log names the line; the snapshot timestamp moves every `--snapshot-interval` |
+| A19 | 2 | Grafana dashboards | provision the dashboards (section 6) | they load in the `anomalyd` folder; the service dashboard shows the band and the threshold line for a scored service |
 
 ---
 

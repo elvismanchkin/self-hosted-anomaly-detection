@@ -16,8 +16,9 @@
   and a replay harness for real logs.
 - It does not repeat [roadmap.md](../roadmap.md). It says what each item changes there
   ([Changes to the roadmap](#changes-to-the-roadmap)).
-- Gaps that none of these items covers, in small batches with batch 1 in progress, are in
-  [feature-gaps.md](feature-gaps.md).
+- Gaps that none of these items covers, in small batches, are in
+  [feature-gaps.md](feature-gaps.md). Its batch 1 is built. Where batch 1 changed an item here,
+  the item says "since batch 1".
 
 Terms and abbreviations: [glossary](../glossary.md). Code references are to functions, not line
 numbers, as of commit `a701af7`; the code is being edited in parallel.
@@ -82,7 +83,7 @@ These are the concrete reasons behind the Now items.
 | Buckets use wall-clock read time | `agent.read`: `bucket := now / Step` | After a restart, `--from-start` or a backlog, old lines land in the current bucket: a fake spike. |
 | The CRI/Docker timestamp is parsed away | `logparse.Envelope` has no time field | The event time we need is already on every stdout line, but is discarded. |
 | No persisted file offsets | agent keeps offsets in memory only | Lines written while the agent is down are lost; `--from-start` would double-count. |
-| At-least-once pushes with no dedupe | `agent.push` / `server.handlePush` | A retry after a timeout double-counts one push. |
+| At-least-once pushes with no dedupe | `agent.push` / `server.handlePush` | A retry after a timeout double-counts one push. Since batch 1 ([feature-gaps.md](feature-gaps.md) G5), a slow snapshot write no longer holds pushes past the agent's 15 s timeout, but any other timeout still double-counts. |
 | Alerts are sent synchronously at the end of `Evaluate`, 10 s timeout per URL | `server.Evaluate` → `sendAlerts` | A slow Alertmanager delays scoring. There is only one sink type. Since commit `3bff8b4` all Alertmanagers are posted to in parallel (one timeout in total) and a resolve is re-sent until one accepts it, but the send is still on the evaluation loop. |
 | Findings exist only in memory, `/api/v1/findings` and Alertmanager | `server.Finding` | Nothing lands in Elasticsearch, so Kibana users cannot see or correlate findings with raw logs. |
 | `template_id` is a per-service Drain cluster number on the server | `server.globalTemplate` | Not stable after state loss, not joinable to anything in Elasticsearch. |
@@ -224,6 +225,9 @@ risking our logging path, and make its output visible in Kibana.
     `_errors_total{reason="no_timestamp"}`.
   - Masks: add `<TS>` (ISO 8601, syslog and epoch timestamps) before `<NUM>`, plus optional
     per-source extra masks (`masks: [{regex, token}]`) for IDs specific to one app.
+  - Also fix a gap that the batch-1 fuzzing found ([feature-gaps.md](feature-gaps.md) G12):
+    `findEmail` masks only the first e-mail address in a token, so `to=a@x.com,b@y.com` keeps
+    `b@y.com`.
   - Container stdout gets multi-line too: many apps print stack traces to stdout. The runtime's
     `P`/`F` joining (already implemented) happens first, then the multi-line rule.
 - **Touched.** `internal/logparse` (new parsers), `internal/drain/mask.go`, `internal/agent`.
@@ -419,7 +423,8 @@ risking our logging path, and make its output visible in Kibana.
   - `/-/ready` returns 503 until state is restored and the backfill is done (or skipped);
     `/-/healthy` stays a liveness check.
   - `anomalyd check-config` for agent and server configs: globs match at least one file, regexes
-    compile and have the `service` group, sinks are reachable (optional `--probe`).
+    compile and have the `service` group, sinks are reachable (optional `--probe`). Since batch 1
+    it should also check the server's `--signature-file`, which today fails only at start-up.
   - Server manifests: a StatefulSet with a PVC for `--state-dir`, a Service, a PodDisruptionBudget,
     a ServiceMonitor or scrape annotations. Kustomize base, no Helm until there is a second
     consumer.
@@ -548,7 +553,8 @@ enabled by default.
 ### X8. Score export to Elasticsearch for band charts
 
 - **Motivation.** Kibana users want to see observed vs expected for the series behind a finding.
-  Today only Grafana can (from `/metrics`).
+  Today only Grafana can (from `/metrics`). Since batch 1 the Grafana dashboards ship in
+  `anomalyd/deploy/grafana/` ([feature-gaps.md](feature-gaps.md) G2).
 - **Design.** Optional sink target `anomalyd-scores` (a time series data stream, TSDS, which
   supports downsampling on Basic): per scored bucket, write service-level log volume series always,
   and other series only while `|z| ≥ 2` or while a finding is open, plus the bucket before and
@@ -572,6 +578,14 @@ enabled by default.
   - `pprof` behind `--debug-listen` on localhost only.
   - Per-service ingestion lag and lines/s on `/metrics`, for "is this service really quiet, or are
     we not reading it?".
+  - Since batch 1 ([feature-gaps.md](feature-gaps.md) G5, G6, G11), part of the input for these
+    rules exists on the server's `/metrics`: `anomalyd_agent_last_push_timestamp_seconds{agent}`
+    (heartbeats included), `anomalyd_log_push_rejected_total{reason}`,
+    `anomalyd_snapshot_failures_total`, `anomalyd_snapshot_last_success_timestamp_seconds`,
+    `anomalyd_templates_created_total` and `_evicted_total`, and `anomalyd_build_info`. So "agent
+    not pushing" and "state snapshot failures" can be written now; drafts are in
+    [DP §17](deployment.md#17-runbook). Still missing: sink and source metrics (N5, N1), a
+    backfill status, and the per-service lag.
 - **Touched.** `internal/server/metrics.go`, `internal/agent`, `deploy/`.
 - **Effort** S. **Risk** Low.
 - **Depends on** N5 (sink metrics), N1 (source metrics).
@@ -582,8 +596,11 @@ enabled by default.
   parsers and sinks need broader coverage, and the independence requirement needs a test that
   proves it.
 - **Design.**
-  - Go fuzz tests for `logparse` (CRI, Docker, JSON extractor, new parsers), multi-line joining and
-    `drain.Tokenizer`.
+  - Go fuzz tests for `logparse` (CRI, Docker, JSON extractor, new parsers) and multi-line
+    joining. Since batch 1 ([feature-gaps.md](feature-gaps.md) G12), `FuzzTokenize`
+    (`drain.Tokenizer`), `FuzzDecode` (remote write) and `FuzzHandlePush` (agent pushes) exist,
+    and CI fuzzes each for 20 s. Extend `FuzzTokenize` to check that every e-mail address in a
+    token is masked (the N2 fix).
   - Golden tests on public [Loghub](https://github.com/logpai/loghub) datasets (HDFS, BGL,
     OpenStack, and others with labels): template counts vs published Drain results, and detection
     precision/recall with the N8 harness.
@@ -639,12 +656,20 @@ enabled by default.
 
 ### X14. Versioned state format and safe upgrades
 
-- **Motivation.** The gob snapshot has no version. N3, N4, N9 and X7 all add state. A server upgrade
-  that cannot read the old snapshot causes a new warm-up and a burst of "new template" findings.
-- **Design.** A header with format version and a migration function per version; the snapshot also
-  records the config values that change ring shapes (step, seasons) and refuses to load a mismatch
-  with a clear error instead of misreading buckets. On an unreadable snapshot, the server starts
-  with novelty muted for `--novelty-warmup`.
+- **Motivation.** N3, N4, N9 and X7 all add state. A server upgrade that cannot read the old
+  snapshot causes a new warm-up and a burst of "new template" findings.
+  - This item first said that the gob snapshot has no version. That was already wrong, and since
+    batch 1 ([feature-gaps.md](feature-gaps.md) G5) more of the design exists. `stateFile` writes
+    `Version` (`stateVersion = 1`), `Step` and the ring sizes (`PromCap`, `LogCap`). `load`
+    refuses another version. When the step or a ring size differs, it logs a WARN with the old
+    and new values and skips those series.
+  - The rule so far is to only add fields, so old and new binaries read each other's snapshots.
+- **Design.** What is left:
+  - A migration function per version, for the first change that cannot be an added field. Today
+    a snapshot with another version is not loaded: the server starts cold, and the novelty
+    warm-up (`--novelty-warmup`) applies again, as on a first start.
+  - The ring of resolved findings in the snapshot (a residue in
+    [feature-gaps.md](feature-gaps.md#considered-and-rejected)).
 - **Touched.** `internal/server/state.go`, `internal/series`.
 - **Effort** S. **Risk** Low.
 - **Depends on** nothing; do it before N9 lands.

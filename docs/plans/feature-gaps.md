@@ -7,14 +7,15 @@
   [model trainer](model-trainer.md) (MT) and the [deployment plan](deployment.md) (DP). A review
   of the code and of the plans found them. Each value and effort rating is the reviewer's
   corrected rating.
-- **We start small.** Batch 1 (7 small items) is in progress on branch
-  `claude/gracious-cerf-2gt6lx`. Batch 2 has 9 more small items. 13 medium items come next, and 8
-  large or low-value items come later.
-- **Three batch-1 items fix silent failures in today's code:** a metric series that stops
-  arriving resolves as healthy (G13); a dead agent looks like a quiet service, and a wrong agent
-  step puts counts in the wrong buckets (G6); a slow snapshot write can hold agent pushes past
-  their timeout (G5).
-- **The two cheapest visible wins are also in batch 1:** severity from the template text, for
+- **We start small.** Batch 1 (7 small items) is built, on branch `claude/gracious-cerf-2gt6lx`.
+  Each batch-1 item has a **Status** line: what landed, and what was deferred. Batch 2 has 9 more
+  small items. 13 medium items come next, and 8 large or low-value items come later.
+- **Three batch-1 items deal with silent failures in the code.** A metric series that stops
+  arriving used to look healthy; now it fires `AnomalydSeriesAbsent` (G13). A dead agent looked
+  like a quiet service, and a wrong agent step put counts in the wrong buckets; now the server
+  tracks each agent and refuses a wrong step (G6). A slow snapshot write could hold agent pushes
+  past their timeout; now it runs with no lock held (G5).
+- **The two cheapest visible wins were also in batch 1:** severity from the template text, for
   logs with no level word such as a Java `OutOfMemoryError` or a Go `panic:` (G1), and Grafana
   dashboards for the scores that anomalyd already exports (G2).
 - **The largest unplanned area is evidence for root cause analysis (RCA):** which label slice,
@@ -29,15 +30,16 @@
   [Fixes to existing plans](#fixes-to-existing-plans).
 
 Terms and abbreviations: [glossary](../glossary.md), plus [Terms used here](#terms-used-here).
-Code references are to functions, not line numbers, as of commit `3bff8b4`.
+Code references are to functions, not line numbers, as of commit `3bff8b4`. The batch-1 Status
+lines describe the code after batch 1 (merge commit `d3a7143` and fix `6a755c9`).
 
-Status: plan, 2026-10-23. Only batch 1 is being built. Nothing else here exists yet.
+Status: plan, 2026-10-23. Batch 1 is built. Nothing else here exists yet.
 
 Sections:
 [Scope and conventions](#scope-and-conventions) ·
 [Terms used here](#terms-used-here) ·
 [Plan at a glance](#plan-at-a-glance) ·
-[Batch 1](#batch-1-in-progress) ·
+[Batch 1](#batch-1-built) ·
 [Batch 2](#batch-2-small-next) ·
 [Next](#next-medium) ·
 [Later](#later-large-or-low-value) ·
@@ -78,7 +80,9 @@ Sections:
 
 ## Terms used here
 
-Terms that are not in the [glossary](../glossary.md).
+Terms that are not in the [glossary](../glossary.md). The batch-1 terms (fuzz test, RE2,
+single-flight, Infinity data source, ldflags `-X`, signature watchlist, heartbeat push, build
+info) are in the glossary.
 
 | Term | Meaning |
 |---|---|
@@ -87,57 +91,52 @@ Terms that are not in the [glossary](../glossary.md).
 | DST | Daylight saving time. Local clocks move by one hour twice a year in many regions. |
 | episode | One fire-to-resolve span of a finding. The finding id stays the same across episodes; `StartsAt` changes. |
 | flapping | A finding that fires, resolves and fires again within a short time. |
-| fuzz test | A test that feeds generated random inputs to a function to find crashes ([Go fuzzing](https://go.dev/doc/security/fuzz/)). |
 | hysteresis | Two thresholds: a higher one to fire and a lower one to resolve, so a value that hovers near one threshold does not flip the state. |
 | IANA time zone | A time zone name from the tz database, for example `Europe/Berlin`. |
-| Infinity data source | A Grafana data-source plugin that reads JSON or CSV from an HTTP API. |
 | interquartile range (IQR) | The distance between the 25th and 75th percentile; a robust measure of spread. |
 | Jaccard similarity | The size of the overlap of two sets divided by the size of their union. |
 | k-of-n firing | Fire when at least k of the last n buckets are anomalous, instead of n buckets in a row. |
 | keep-firing | Keep a finding open for some quiet buckets before resolving it. Prometheus calls this `keep_firing_for` ([alerting rules](https://prometheus.io/docs/prometheus/3.9/configuration/alerting_rules/)). |
-| ldflags `-X` | A Go linker flag that sets a string variable at build time; used to embed the version. |
 | log-likelihood ratio (LLR) | How much better a changed rate explains an observed count than the expected rate does. A large value means a surprising change. |
-| RE2 | The regular-expression syntax of Go's `regexp` package. It runs in linear time and has no backreferences. |
 | service catalog | A file that maps each service to its team, owner, runbook and chat channel. |
 | `significant_terms` | An Elasticsearch aggregation that returns terms that are more common in a foreground set than in a background set. Its scoring heuristics are JLH, chi_square, gnd, mutual_information, percentage and p_value ([docs](https://www.elastic.co/docs/reference/aggregations/search-aggregations-bucket-significantterms-aggregation)). |
-| single-flight | At most one run of a job at a time; a new request while one runs is skipped. |
 | TraceRCA | A trace-based RCA method that ranks operations which appear more in abnormal traces than in normal ones ([paper](https://ieeexplore.ieee.org/abstract/document/9521340)). |
 
 ## Plan at a glance
 
 | ID | Gap | Group | Value | Effort | Existing coverage | Depends on |
 |---|---|---|---|---|---|---|
-| G1 | [Severity from template text, signature watchlist](#g1-severity-from-template-text-and-a-signature-watchlist) | Batch 1 | high | S | none | none |
-| G2 | [Grafana dashboards and a findings table](#g2-grafana-dashboards-and-a-findings-table) | Batch 1 | high | S | none (N7 is Kibana only) | G11 for one row |
+| G1 | [Severity from template text, signature watchlist](#g1-severity-from-template-text-and-a-signature-watchlist) | Batch 1, built | high | S | none | none |
+| G2 | [Grafana dashboards and a findings table](#g2-grafana-dashboards-and-a-findings-table) | Batch 1, built | high | S | none (N7 is Kibana only) | G11 for one row |
 | G3 | [Log rate analysis on ES Basic](#g3-log-rate-analysis-on-elasticsearch-basic-with-significant_terms) | Next | high | M | none | N5 or DP §5.3, N6, X13 |
 | G4 | [Finding lifecycle: k-of-n, hysteresis, flap damping](#g4-finding-lifecycle-k-of-n-hysteresis-keep-firing-flap-damping) | Next | high | M | partial: X11, MT §6.1, MT §7.1, X4 | MT §7.1 parity |
-| G5 | [Non-blocking snapshot, mismatch warnings](#g5-non-blocking-snapshot-and-mismatch-warnings) | Batch 1 | medium | S | partial: X14 | none |
-| G6 | [Agent registry, heartbeat, step validation](#g6-agent-registry-heartbeat-and-step-validation) | Batch 1 | medium | S | partial: X9, N4 | none |
+| G5 | [Non-blocking snapshot, mismatch warnings](#g5-non-blocking-snapshot-and-mismatch-warnings) | Batch 1, built | medium | S | partial: X14 | none |
+| G6 | [Agent registry, heartbeat, step validation](#g6-agent-registry-heartbeat-and-step-validation) | Batch 1, built | medium | S | partial: X9, N4 | none |
 | G7 | [Time-zone and DST-aware seasonal lags](#g7-time-zone-and-dst-aware-seasonal-lags) | Batch 2 | medium | S | none | before or with X5 |
-| G8 | [Namespace on log series](#g8-namespace-dimension-on-log-series) | Batch 2 | medium | S | partial: X1, X6, L7 | G5 |
+| G8 | [Namespace on log series](#g8-namespace-dimension-on-log-series) | Batch 2 | medium | S | partial: X1, X6, L7 | G5 (built) |
 | G9 | [Owner and runbook from a service catalog](#g9-owner-and-runbook-enrichment-from-a-service-catalog) | Batch 2 | medium | S | none | G8 (namespace match) |
 | G10 | [Contrastive template ranking](#g10-contrastive-template-ranking-grew-new-vanished) | Batch 2 | medium | S | partial: X13 | none; X13 consumes it |
-| G11 | [Self-metrics, build info, log format](#g11-self-metrics-build-info-and-log-format) | Batch 1 | medium | S | partial: X9 | none; G29 adds the version |
-| G12 | [Fuzz targets for network decoders, kubeconform](#g12-fuzz-targets-for-network-decoders-and-kubeconform-in-ci) | Batch 1 | medium | S | partial: X10 | after G6 |
-| G13 | [Absent metric series instead of resolve-on-gap](#g13-absent-metric-series-instead-of-resolve-on-gap) | Batch 1 (metric part) | medium | M | partial: RefArch T0, X9 | none |
-| G14 | [Contamination-resistant baselines](#g14-contamination-resistant-seasonal-baselines) | Next | medium | M | partial: X5, MT §6.2, X7 | G5, X14 |
+| G11 | [Self-metrics, build info, log format](#g11-self-metrics-build-info-and-log-format) | Batch 1, built | medium | S | partial: X9 | none; G29 adds the release build |
+| G12 | [Fuzz targets for network decoders, kubeconform](#g12-fuzz-targets-for-network-decoders-and-kubeconform-in-ci) | Batch 1, built | medium | S | partial: X10 | after G6 |
+| G13 | [Absent metric series instead of resolve-on-gap](#g13-absent-metric-series-instead-of-resolve-on-gap) | Batch 1 (metric part), built | medium | M | partial: RefArch T0, X9 | none |
+| G14 | [Contamination-resistant baselines](#g14-contamination-resistant-seasonal-baselines) | Next | medium | M | partial: X5, MT §6.2, X7 | G5 (built), X14 |
 | G15 | [Dimension attribution](#g15-dimension-attribution-which-label-slice-explains-it) | Next | medium | M | partial: X3, X13 | X13, X1 or G8 |
 | G16 | [Onset-anchored related-series ranking (BARO)](#g16-onset-anchored-related-series-ranking-baro) | Next | medium | M | partial: X6, X13, RefArch T3 | X13, N8; X4 optional |
 | G17 | [Count model with traffic exposure](#g17-count-model-with-traffic-exposure) | Next | medium | M | partial: X2, X3, MT §6 | X2, X3, N8 |
 | G18 | [SLO-burn impact gate and miss counter](#g18-slo-burn-impact-gate-and-miss-counter) | Next | medium | M | partial: MT §5.1, DP §14, L4 | DP §6, N5 |
-| G19 | [Peer-group outlier detector](#g19-peer-group-outlier-detector) | Next | medium | M | none | G6, N4 |
+| G19 | [Peer-group outlier detector](#g19-peer-group-outlier-detector) | Next | medium | M | none | G6 (built), N4 |
 | G20 | [Deterministic investigation checks](#g20-deterministic-investigation-checks) | Next | medium | M | partial: X13, RefArch T3, I2.4 | X1 or G8, X13 |
 | G21 | [Priority, shape and lifecycle tags](#g21-per-finding-priority-shape-and-lifecycle-tags) | Next | medium | M | partial: X6, MT §6.3 | G4, X6 |
-| G22 | [Semantic template labels](#g22-semantic-template-labels) | Next | medium | M | none | G1, N9, N10 |
-| G23 | [Template byte accounting, log-reduction report](#g23-template-byte-accounting-and-log-reduction-report) | Next | medium | M | none | G1, N9 |
+| G22 | [Semantic template labels](#g22-semantic-template-labels) | Next | medium | M | none | G1 (built), N9, N10 |
+| G23 | [Template byte accounting, log-reduction report](#g23-template-byte-accounting-and-log-reduction-report) | Next | medium | M | none | G1 (built), N9 |
 | G24 | [Seasonal forecast and ForecastBreach](#g24-seasonal-forecast-and-forecastbreach) | Next | medium | M | partial: RefArch T0, I3 | X11 |
 | G25 | [Trace contrast via Jaeger](#g25-on-demand-trace-contrast-via-jaeger-tracerca) | Later | medium | M | partial: RefArch T3, L3 | I1.3, X13 |
 | G26 | [Template parameter tracking](#g26-template-parameter-tracking) | Later | medium | L | none | N10, N9, X3 |
 | G27 | [Topology-aware incident grouping](#g27-topology-aware-incident-grouping-with-origin-and-symptom) | Later | medium | L | partial: X6, L3, I2.5 | X6, G16 |
 | G28 | [Per-service series and template-churn quotas](#g28-per-service-live-series-and-template-churn-quotas) | Batch 2 | low | S | partial: L7 | G8 |
-| G29 | [Release pipeline](#g29-release-pipeline-version-multi-stage-image-tag-workflow) | Batch 2 | low | S | partial: N10, N11 | G11 |
+| G29 | [Release pipeline](#g29-release-pipeline-version-multi-stage-image-tag-workflow) | Batch 2 | low | S | partial: N10, N11 | G11 (built) |
 | G30 | [Series listing and explain detail](#g30-series-listing-and-explain-detail) | Batch 2 | low | S | partial: MT §9.5, X13 | none |
-| G31 | [HolmesGPT toolset for the anomalyd API](#g31-holmesgpt-toolset-for-the-anomalyd-api) | Batch 2 | low | S | none | G30, G6 |
+| G31 | [HolmesGPT toolset for the anomalyd API](#g31-holmesgpt-toolset-for-the-anomalyd-api) | Batch 2 | low | S | none | G30, G6 (built) |
 | G32 | [Metric label-value novelty](#g32-metric-label-value-novelty) | Batch 2 | low | S | partial: L3 | none |
 | G33 | [ES rollup replay at start-up](#g33-es-rollup-replay-at-start-up) | Later | low | S | partial: X12 | X12, N4 |
 | G34 | [Multi-baseline consensus gate](#g34-multi-baseline-consensus-gate) | Later | low | S | none | N8, G14 |
@@ -145,24 +144,35 @@ Terms that are not in the [glossary](../glossary.md).
 | G36 | [Similar-incident retrieval](#g36-similar-incident-retrieval) | Later | low | M | none | X6, X7, N6, N9 |
 | G37 | [Offline LLM mask synthesis](#g37-offline-llm-mask-synthesis-and-merge-review) | Later | low | M | partial: N8, N2, N10, MT §3 | N8, N9, N10 |
 
-## Batch 1: in progress
+## Batch 1: built
 
-Batch 1 is being built on branch `claude/gracious-cerf-2gt6lx`. All seven items are small and
-need no other plan item. G5, G6 and G13 fix failure modes in today's code; the other four add
-features or checks.
+Batch 1 is built on branch `claude/gracious-cerf-2gt6lx`. All seven items are small and need no
+other plan item. G5, G6 and G13 fix failure modes in the code; the other four add features or
+checks. Four packages were built and reviewed separately, then merged: G5; G6 with G11; G1 with
+G13; G2 with G12. Operators find the new flags, alerts, metrics and endpoints in the
+[anomalyd README](../../anomalyd/README.md) and in [DP §6](deployment.md#6-anomalyd-configuration).
 
-| ID | Batch 1 builds | Batch 1 defers |
+The table shows what landed. Each item's **Status** line has the detail, including where the code
+differs from the plan.
+
+| ID | Built in batch 1 | Deferred |
 |---|---|---|
-| G1 | keyword severity inference on the server; `--signature-file` and `AnomalydLogSignature` | the stderr hint (needs a wire field); the ElastAlert2 path-A rule; moving the file into the X11 config |
-| G2 | service, overview and health dashboards; provisioning file; JSON check in CI | pushing annotations to Grafana's HTTP API (a later N5 sink); the findings table if the Infinity plugin is not allowed |
-| G5 | copy under the lock, then encode and write off it (single-flight); loud mismatch warnings | re-bucketing on a step change; off-node snapshot copies; the resolved ring in the snapshot |
-| G6 | agent registry, `GET /api/v1/agents`, step validation, heartbeat pushes | `cause=agent_silent` on volume-down findings |
-| G11 | evicted and created template counters, snapshot and backfill metrics, `anomalyd_build_info`, `anomalyd version`, `--log-format`, `--log-level` | the `-X main.version` build step (G29); a counter for skipped native-histogram samples |
-| G12 | `FuzzDecode`, `FuzzHandlePush`, kubeconform in CI | a server-restart end-to-end test (goes into the X10 soak) |
-| G13 | `AnomalydSeriesAbsent` for metric series; no resolve-as-healthy on a gap; `--absent-ttl` | absence of periodic log templates; the interim PromQL rule |
+| G1 | keyword severity (`logparse.InferLevel`) on the server; `--signature-file` (RE2) and `AnomalydLogSignature` | the CRI stderr hint (needs a wire field); the ElastAlert2 path-A rule; moving the file into the X11 config (with reload) |
+| G2 | service, overview and health dashboards, an optional findings dashboard (Infinity), `dashboards.yaml`; JSON check in CI | pushing annotations to Grafana's HTTP API (a later N5 sink) |
+| G5 | copy under the locks, then encode and write with no lock held (single-flight); mismatch warnings; snapshot metrics | re-bucketing on a step change; off-node snapshot copies; the resolved ring in the snapshot; a counter for skipped snapshots |
+| G6 | agent registry, `GET /api/v1/agents`, step validation, heartbeat pushes | `cause=agent_silent` on volume-down findings; the registry in the snapshot; per-service line shares |
+| G11 | created and evicted template counters, `anomalyd_build_info`, `anomalyd version`, `--log-format`, `--log-level` | `anomalyd_backfill_status`; a counter for skipped native-histogram samples; the release pipeline (G29) |
+| G12 | `FuzzDecode`, `FuzzHandlePush`, `FuzzTokenize`, kubeconform in CI; a UTF-8 fix for service names | a server-restart end-to-end test (X10 soak); a masking gap the fuzzer found (N2, X10) |
+| G13 | `AnomalydSeriesAbsent` for metric series; `--absent-buckets`, `--absent-ttl`; a `gc` fix | absence of periodic log templates; the interim PromQL rule; `resolved_reason="absent"`; absence across a restart |
 
-**Order inside batch 1.** The ratings put G1 and G2 (high value) first. We suggest a different
-order, because of what each item needs:
+One more fix came with batch 1. `handleFindings` copied each finding under `findMu`, but the
+copies shared the label and annotation maps. It encoded them after unlocking, while evaluation
+rewrites a firing finding's annotations in place. So a read of `/api/v1/findings` during
+evaluation could crash the server (a concurrent map read and write is fatal in Go). The copies now
+own their maps (commit `6a755c9`). The G5 review found it; the bug predates batch 1.
+
+**Order inside batch 1.** The ratings put G1 and G2 (high value) first. The plan suggested a
+different order, because of what each item needs:
 
 1. G5 with G11: G11's snapshot metrics are how we see that G5 works.
 2. G6, then G13: the other two failure-mode fixes.
@@ -170,11 +180,30 @@ order, because of what each item needs:
 4. G1 runs in parallel from the start; it touches different code (`logparse`, novelty).
 5. G2 last: its health row plots the G11 metrics.
 
+In the end the four packages ran in parallel, and were merged in the order listed above: G5
+first, G2 with G12 last.
+
 The review's own first batch had G7 instead of G11. G7 moves to batch 2 because it changes the
 detector's hot path and the Python parity test, while batch 1 stays with fixes and observability.
 
 ### G1. Severity from template text and a signature watchlist
 
+- **Status: built in batch 1.** Keyword severity for template findings, and a signature
+  watchlist that fires `AnomalydLogSignature`.
+  - Landed: `logparse.InferLevel` (`internal/logparse/severity.go`) reads a masked template's
+    fixed words. The server keeps the result in `tmplMeta`: derived when a template is created,
+    when its text generalises, and after `load`; not saved. New-template and template-rate
+    findings use it when the dominant level is unknown or info.
+  - Landed: `--signature-file` (one `name: RE2 regex` per line; a bad line stops start-up and
+    names the line). `AnomalydLogSignature{service,template_id,signature}`, tier 1, `warning`,
+    kind `log_signature`, resolves after `--novelty-ttl`. The counter is
+    `anomalyd_signature_matches_total{signature}`. `/api/v1/templates` shows `inferred_level`
+    and `signatures`.
+  - Differs from the plan: the annotation is `severity_source="template keywords"`, without the
+    rule name. The limit is one finding per service and signature per rolling 24 h (kept across
+    restarts with `--state-dir`), not per UTC day.
+  - Deferred, as below: the CRI stderr hint, the path-A ElastAlert2 rule, and the X11 config.
+    The file is read at start-up only; a change needs a restart.
 - **What it is.** When a template has no level word, or only `info`, infer a severity from
   keywords anywhere in its constant tokens: `panic`, `FATAL`, `OutOfMemoryError`, `OOM`,
   `deadlock`, `Traceback`, `Exception`, `segfault`, `connection refused`. Also, a list of
@@ -233,6 +262,18 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G2. Grafana dashboards and a findings table
 
+- **Status: built in batch 1.** Four dashboards and a provisioning file in
+  `anomalyd/deploy/grafana/`.
+  - Landed: `anomalyd-service.json`, `anomalyd-overview.json`, `anomalyd-health.json` (with a
+    collapsed row for the batch-1 self-metrics) and an optional `anomalyd-findings.json` on
+    `/api/v1/findings` through the Infinity data source. All use `schemaVersion` 39
+    (Grafana 11.x) and a data source variable. `dashboards.yaml` is the file-provisioning example.
+  - Landed: the CI configs job checks that each dashboard parses with `jq` and has a `uid`,
+    `schemaVersion` 39 and panels.
+  - Checked once on Grafana 11.6.0 with Prometheus 3.14.0 and Infinity 3.11.1 (the anomalyd
+    README's Verification table).
+  - Deferred, as below: pushing findings to Grafana's annotations API. The findings dashboard
+    ships, but stays optional while the Infinity question is open.
 - **What it is.** Provisioned Grafana OSS dashboards for the series anomalyd already exports, a
   health view of anomalyd itself, and a table of findings.
 - **Why it matters here.** Grafana OSS is the metrics UI of our stack. anomalyd exports
@@ -280,6 +321,21 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G5. Non-blocking snapshot and mismatch warnings
 
+- **Status: built in batch 1.** Snapshots no longer hold server locks during the encode and the
+  write, and a snapshot that does not fit the ring shape is reported.
+  - Landed: `copyState` copies findings (with their label and annotation maps), template level
+    maps and series under their locks. `writeState` encodes and writes with no lock held.
+  - Landed: `Run` takes periodic snapshots in one background goroutine (single-flight). A tick
+    that finds one still running is skipped and logged at WARN. On shutdown it waits for the
+    running one, then saves once more.
+  - Landed: `load` warns with the old and new values when the step, the metric ring or the log
+    ring size differs, and says how many series it skips.
+  - Landed: `anomalyd_snapshot_duration_seconds`, `anomalyd_snapshot_failures_total`,
+    `anomalyd_snapshot_last_success_timestamp_seconds`.
+  - `stateVersion` stays 1. Batch 1 only added fields (the signature times of G1), so old and
+    new binaries read each other's snapshots.
+  - Differs from the plan: no `anomalyd_snapshot_skipped_total`; the skip is only logged.
+  - Deferred, as below: re-bucketing on a step change, off-node copies, the resolved ring.
 - **What it is.** Take the state snapshot without holding the template lock during the encode
   and the file write, and warn loudly when a snapshot does not fit the current ring shape.
 - **Why it matters here.**
@@ -317,6 +373,26 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G6. Agent registry, heartbeat and step validation
 
+- **Status: built in batch 1.** The server knows its agents and refuses pushes with a wrong
+  step.
+  - Landed: `handlePush` answers 400 ("agent step 120s does not divide server step 300s") when
+    the agent step does not divide the server step. It counts the push in
+    `anomalyd_log_push_rejected_total{reason="step"}` and `anomalyd_log_push_errors_total`.
+    Step 0 (older agents) is accepted.
+  - Landed: a registry (`internal/server/agents.go`): up to 10,000 agents, the rest share
+    `agent="_other"`; 256 services per agent; an agent with no push for 24 h is forgotten. It
+    feeds `GET /api/v1/agents` (last push, step, pushes, rejected pushes, lines, services with
+    lines in the last hour), `anomalyd_agent_last_push_timestamp_seconds{agent}` and
+    `anomalyd_agent_lines_total{agent}`.
+  - Landed: the agent sends an empty push when it has no counts (heartbeat). The server records
+    it, but it does not start the novelty warm-up clock.
+  - Differs from the plan: the counter is `anomalyd_log_push_rejected_total{reason="step"}`,
+    not `anomalyd_push_rejected_total{reason="step_mismatch"}`. There is no `anomalyd_agents`
+    gauge (`count(anomalyd_agent_last_push_timestamp_seconds)` gives it). `/api/v1/agents` lists
+    the services, not their shares.
+  - Deferred: `cause=agent_silent`, as below, and the per-service shares it needs. The registry
+    is not in the snapshot: after a restart an agent shows again only when it pushes, so an agent
+    that died while the server was down is missing, not stale.
 - **What it is.** The server keeps a small registry of agents: last push, step, lines, and the
   share of each service's lines. It rejects pushes whose step does not fit the server step.
   Agents send an empty push when they have nothing to send.
@@ -362,6 +438,22 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G11. Self-metrics, build info and log format
 
+- **Status: built in batch 1.** Template churn counters, build info, a version command and
+  configurable logs.
+  - Landed: `anomalyd_templates_created_total{service}` and
+    `anomalyd_templates_evicted_total{service}` (`drain.Miner.Evicted`).
+  - Landed: `anomalyd_build_info{version,revision,goversion}` on the server, and
+    `anomalyd_agent_build_info` on the agent's `/metrics`. `anomalyd version` prints the
+    version, the revision and the Go version.
+  - Landed: `var version = "dev"` in `cmd/anomalyd`, set with `-ldflags "-X main.version=…"`.
+    The README build command and the Dockerfile comment pass `git describe`. The revision comes
+    from the Go build info.
+  - Landed: `--log-format=text|json` and `--log-level=debug|info|warn|error` on every
+    subcommand.
+  - The snapshot metrics came with G5.
+  - Not built: `anomalyd_backfill_status{state}`.
+  - Deferred, as below: the counter for skipped native-histogram samples. The release pipeline
+    that sets the version from a tag is G29.
 - **What it is.** The counters anomalyd is missing about itself, a build-info metric and a
   version command, and log output that an operator can parse.
 - **Why it matters here.** A silent detector looks like a healthy system.
@@ -399,6 +491,25 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G12. Fuzz targets for network decoders and kubeconform in CI
 
+- **Status: built in batch 1.** Three fuzz targets and manifest validation in CI. The fuzzer
+  found one bug, now fixed, and one masking gap, still open.
+  - Landed: `FuzzDecode` (`internal/promrw`: snappy with the size limit, then `Decode`, and an
+    encode/decode round trip), `FuzzHandlePush` (`internal/server`: plain, gzip and fake-gzip
+    bodies; only 2xx or 4xx; service names stay valid UTF-8) and, beyond the plan,
+    `FuzzTokenize` (`internal/drain`).
+  - Landed: `go test` runs the seeds on every PR. The CI go job also fuzzes each target for
+    20 s and uploads crashers on failure; the plan had a longer run in the weekly e2e workflow
+    instead. Local runs were 60 s per target (anomalyd README, Verification).
+  - Landed: the CI configs job runs kubeconform v0.8.0 `-strict` on `anomalyd/deploy/*.yaml`.
+  - Fixed: `cleanService` cut service names at byte 128, which could split a rune, and passed
+    raw bytes from `/api/v1/logs?service=` through. Invalid UTF-8 in a label fails the whole
+    Prometheus scrape of `/metrics`, and Alertmanager rejects the alert. The input is a
+    regression seed in `internal/server/testdata/fuzz`.
+  - Found, not fixed: `findEmail` (`drain/mask.go`) masks only the first e-mail address in a
+    token, so `to=a@x.com,b@y.com` keeps `b@y.com`. It belongs with the
+    [N2](future-improvements.md#n2-raw-file-parsing-multi-line-header-parsers-timestamp-masks)
+    masks and [X10](future-improvements.md#x10-test-and-benchmark-suite) fuzzing.
+  - Deferred, as below: the server-restart end-to-end test.
 - **What it is.** Go fuzz tests for the two parsers that read untrusted network input, and
   manifest validation in CI.
 - **Why it matters here.** `promrw` is a hand-written protobuf parser behind snappy, and
@@ -431,6 +542,29 @@ detector's hot path and the Python parity test, while batch 1 stays with fixes a
 
 ### G13. Absent metric series instead of resolve-on-gap
 
+- **Status: built in batch 1 (metric part).** A metric series that stops arriving fires
+  `AnomalydSeriesAbsent`.
+  - Landed: `trackAbsent` fires `AnomalydSeriesAbsent` (kind `metric_absent`, tier 2,
+    `warning`, `direction=down`) for a metric series where both directions count. It fires after
+    `--absent-buckets` (default 3, 0 = off) missing buckets in a row.
+  - Only a bucket that another remote-write series reached counts. A bucket that no series
+    reached (Prometheus down) neither counts nor breaks the run. This replaces the planned
+    share-of-series guard and the `anomalyd_series_absent` gauge;
+    `anomalyd_findings_active{kind="metric_absent"}` counts the findings.
+  - The series must have come by remote write in this process, so a backfill-only copy is never
+    absent. Its last expected value must be above the scale floor (`--abs-floor`); there is no
+    `--absent-floor` flag.
+  - It resolves when data returns, or `--absent-ttl` (default 24 h, 0 = only when data returns)
+    after the series stopped, then stays quiet until data returns. A firing absent finding
+    survives a restart.
+  - Fixed: `gc` never dropped a vanished metric series, because `Evaluate` moves every metric
+    head to the data clock. It now uses the bucket of the last sample, and keeps a series while
+    its absent finding fires.
+  - Differs from the plan: a firing metric finding still resolves after 3 missing buckets, with
+    no `resolved_reason="absent"` annotation. The absent alert is the signal instead.
+  - Deferred: absence of periodic log templates and the interim PromQL rule, as below. Also
+    absence across a restart: a series needs a remote write and a scored bucket in the current
+    process, so one that stops while anomalyd is down is not reported after the restart.
 - **What it is.** When one metric series stops arriving while others still arrive, report it as
   absent, instead of resolving its finding as if it were healthy.
 - **Why it matters here.** In `evalSeries`, 3 missing buckets resolve a firing finding: the same
@@ -546,7 +680,7 @@ anomalyd version.
   - Migration: switching it on re-keys every log series. To avoid a cold start and a burst of
     "new template" findings, the first namespaced push for a service takes over that service's
     old entry (through X14's migration hook, or a one-off step in `load` if X14 is not built).
-- **Depends on** G5. Old agents without the field keep today's keys.
+- **Depends on** G5 (built in batch 1). Old agents without the field keep today's keys.
 - **Done when.**
   - Pushes for `checkout` from two namespaces give two template sets and two volume series, and
     their findings carry `namespace`.
@@ -646,20 +780,23 @@ anomalyd version.
 - **What it is.** A version set at build time, an image built from source, and a release
   workflow on tags.
 - **Why it matters here.** The trainer's model set gates on `anomalyd_min`
-  ([MT §8.1](model-trainer.md#81-the-model-set)), but anomalyd cannot report its version. The
-  `anomalyd/Dockerfile` copies a prebuilt amd64 binary onto an unpinned distroless tag.
+  ([MT §8.1](model-trainer.md#81-the-model-set)). Since G11 (batch 1), anomalyd reports a
+  version (`anomalyd version`, `anomalyd_build_info`), but only the one the person who built it
+  passed in `-X main.version`. The `anomalyd/Dockerfile` copies a prebuilt amd64 binary onto an
+  unpinned distroless tag.
 - **Existing plans.** [N10](future-improvements.md#n10-security-baseline) covers govulncheck,
   an SBOM, cosign signatures and a pinned base digest;
   [N11](future-improvements.md#n11-readiness-config-validation-and-packaging) covers the
   manifests. This item adds the version and the build steps that those attach to.
 - **What to build.**
-  - `var version = "dev"` in `cmd/anomalyd`, set with `-ldflags "-X main.version=<tag>"`.
+  - Set `-ldflags "-X main.version=<tag>"` from the tag. The variable (`var version = "dev"` in
+    `cmd/anomalyd`) exists since G11.
   - A multi-stage Dockerfile: a Go build stage and the distroless runtime stage, both pinned by
     digest, with `CGO_ENABLED=0` and `-trimpath`.
   - A tag-triggered workflow (`v*`) that builds and pushes with buildx, and later carries N10's
     SBOM and cosign steps.
   - arm64 only if the Step-0 inventory shows arm nodes.
-- **Depends on** G11 (`anomalyd_build_info` and `anomalyd version`).
+- **Depends on** G11 (`anomalyd_build_info` and `anomalyd version`), built in batch 1.
 - **Done when.**
   - An image built by the workflow reports the tag in `anomalyd version` and in
     `anomalyd_build_info`.
@@ -703,7 +840,7 @@ anomalyd version.
   `/api/v1/findings?id=`, `/api/v1/templates?service=`, `/api/v1/series` (G30),
   `/api/v1/agents` (G6), and later X13's `/api/v1/bundles`, with N10's read token once it
   exists.
-- **Depends on** G30 and G6 for two of the tools; N10 for auth.
+- **Depends on** G30 and G6 (built in batch 1) for two of the tools; N10 for auth.
 - **Done when.**
   - HolmesGPT loads the toolset without errors.
   - In a local run against the e2e stack, an investigation of a synthetic finding calls the
@@ -837,9 +974,10 @@ in batch 2.
     attach to one episode.
   - **Parity:** mirror the state machine in the trainer's Python backtester (MT §7.1), or parity
     breaks. The N8 report adds "notifications per incident".
-- **Depends on** nothing to build. MT §7.1 must follow it; X11 carries the flags later. After
-  G13, a gap no longer resolves a metric finding as healthy; `--missing-resolve-buckets` then
-  applies to log series and to the absent path.
+- **Depends on** nothing to build. MT §7.1 must follow it; X11 carries the flags later. Since
+  G13 (built in batch 1), a metric series that stops also fires `AnomalydSeriesAbsent` after
+  `--absent-buckets`. Its metric finding still resolves after 3 missing buckets, and
+  `--missing-resolve-buckets` then sets that number, for metric and log series.
 - **Done when.**
   - With default flags, the existing tests pass and an N8 replay (or the e2e data, if N8 is not
     ready) produces exactly today's findings.
@@ -878,7 +1016,7 @@ in batch 2.
   - The flags are saved in the snapshot (with G5 and X14).
   - "Revert the baseline to time T" is the same call, from T to now.
   - The ±w neighbourhood median is a separate, riskier change: A/B-test it in N8 only.
-- **Depends on** G5 and X14 for persistence; X7 later.
+- **Depends on** G5 (built in batch 1) and X14 for persistence; X7 later.
 - **Done when.**
   - Synthetic test: an incident fires in week 1. In week 2 the expected value at that slot equals
     the clean week's value, not the mean with the incident, and a repeat incident fires as fast as
@@ -1029,9 +1167,9 @@ in batch 2.
 ### G19. Peer-group outlier detector
 
 - **What it is.** Flag the one pod or node that behaves unlike its peers in the same service.
-- **Why it matters here.** A bad node or a bad pod hides in service-level sums. The agent sets
-  `wire.Push.Agent`, but the server reads it only in a test, and `addLog` keys by service,
-  template and level.
+- **Why it matters here.** A bad node or a bad pod hides in service-level sums. Since G6
+  (batch 1) the server reads `wire.Push.Agent` for its agent registry, but `addLog` still keys
+  by service, template and level.
 - **Existing plans.** None. research/02 has a promtool-verified `PodLatencyPeerOutlier` rule
   that is not in `poc/prometheus/anomaly-alerts.yml` (see [Fixes](#fixes-to-existing-plans)).
 - **What to build.**
@@ -1043,7 +1181,8 @@ in batch 2.
     store. Compare each agent's share of the template with its share of the service's total lines;
     this controls for uneven pod placement. Require at least 3 agents. Fire
     `AnomalydPeerOutlier{service,agent}` after `--for`. The worst case is about 100 MB, so cap it.
-- **Depends on** G6's registry for the line shares; N4's `agent_id` for a stable agent key.
+- **Depends on** G6's registry (built in batch 1). It lists each agent's services but no line
+  shares yet, so this item adds them. N4's `agent_id` gives a stable agent key.
 - **Done when.**
   - The metrics rule has a promtool test.
   - In a synthetic run with 5 agents where one emits 10× the error lines for one service, only
@@ -1136,7 +1275,8 @@ in batch 2.
   - **Phase 2 (M).** An external labeller in `triage-svc` reads new templates from N9, applies
     N10 redaction, makes one capped LLM call per `template_hash`, and writes a rules file that
     anomalyd reloads. anomalyd stays free of LLM calls.
-- **Depends on** G1; N9 and N10 for phase 2; X11 for the reload.
+- **Depends on** G1 (built in batch 1; the table is in `internal/logparse/severity.go`); N9 and
+  N10 for phase 2; X11 for the reload.
 - **Done when.**
   - Phase 1: table tests, and the N8 report shows the share of novelty findings that get a
     domain.
@@ -1164,7 +1304,7 @@ in batch 2.
     and only a human applies them.
   - The agent reads the files independently of Filebeat, so detection still sees the dropped
     templates.
-- **Depends on** G1 for the exemptions; N9 for stable report rows.
+- **Depends on** G1 (built in batch 1) for the exemptions; N9 for stable report rows.
 - **Done when.**
   - Byte totals per service match the agent's total byte counter within 1 %.
   - Old agents without `bytes` still work.
@@ -1191,7 +1331,7 @@ in batch 2.
     so G2's dashboards read this through the Infinity data source.
   - A tier-2 `ForecastBreach` against `capacity:svc:*` rules or static limits.
   - The `predict_linear` T0 rules with promtool tests; they can go early, with G32.
-- **Depends on** X11 for the opt-in list; G2 for display.
+- **Depends on** X11 for the opt-in list; G2 (built in batch 1) for display.
 - **Done when.**
   - On synthetic weekly data with growth, the forecast error (MASE) over 24 h is lower than
     `predict_linear`'s.
@@ -1411,7 +1551,7 @@ to that plan, not new code (except where noted).
 
 | Where | Problem | Fix |
 |---|---|---|
-| [X14](future-improvements.md#x14-versioned-state-format-and-safe-upgrades) | Says the snapshot has no version. `stateFile` already writes `Version` (`stateVersion = 1`), `Step` and the ring caps, and `load` already skips rings that do not fit, silently. | Rewrite X14 around what is left: a migration per version, novelty muting on an unreadable snapshot. The loud warnings and the lock fix are G5. |
+| [X14](future-improvements.md#x14-versioned-state-format-and-safe-upgrades) | Says the snapshot has no version. `stateFile` already writes `Version` (`stateVersion = 1`), `Step` and the ring caps, and `load` already skips rings that do not fit, silently. | Rewrite X14 around what is left: a migration per version, novelty muting on an unreadable snapshot. The loud warnings and the lock fix are G5. Done with batch 1: G5 is built, and X14 now says this. |
 | [N11](future-improvements.md#n11-readiness-config-validation-and-packaging) and [DP §9.1](deployment.md#91-chart-layout-proposed-nothing-of-this-exists-yet) | N11 says Kustomize and "no Helm until there is a second consumer". DP §9.1 proposes a Helm chart. | Decide once, then edit the other document. |
 | [N6](future-improvements.md#n6-elasticsearch-findings-sink-and-index-templates) and [DP §5.3](deployment.md#53-findings-shipper-s4) | N6 has anomalyd write to ES with an API key. The deployment plan ships findings through a Filebeat findings-shipper, to keep ES credentials out of anomalyd. | Pick one. If the shipper wins, N6 shrinks to the index templates, and N10's ES role moves to the shipper. G3 and G9 follow the same choice. |
 | N6 | Its data-stream templates do not address the legacy OSS 7.10 branch of the roadmap. | Add an OSS 7.10 variant or mark N6 as Basic only; check what the OSS build supports in Step 0. |
@@ -1422,7 +1562,7 @@ to that plan, not new code (except where noted).
 | X5 | "Scored against the median of past holidays" works only after about one year of archive. | Say so in X5. |
 | [MT §7.1](model-trainer.md#71-backtesting) | The backtester hard-codes "resolve after 2 normal buckets". | Use G4's settings, with the same state machine in Python and Go. |
 | [X7](future-improvements.md#x7-feedback-loop-labels-suppressions-and-per-rule-precision) | Labels are keyed by the finding id, which is deterministic, so a label is ambiguous across episodes. | Key labels by (id, episode) from G4. |
-| [X8](future-improvements.md#x8-score-export-to-elasticsearch-for-band-charts) | Says "today only Grafana can" show bands, but no Grafana dashboard ships. | Point to G2. |
+| [X8](future-improvements.md#x8-score-export-to-elasticsearch-for-band-charts) | Says "today only Grafana can" show bands, but no Grafana dashboard ships. | Point to G2. Done with batch 1. |
 | X6 and L7 | Both assume a namespace on findings and series that nothing carries. | Add G8 to their dependencies. |
 | research/01 | Suggests `significant_terms` needs a fallback on OSS 7.10. | Only the `p_value` heuristic needs Basic; JLH, chi_square, gnd, mutual_information and percentage are core. |
 | [DP §15](deployment.md#15-new-code-needed-in-anomalyd) | Its rows are numbered N1–N9, which clash with future-improvements N1–N11 (for example DP §15 N8 is readiness, which is future-improvements N11). Found while writing this plan. | Rename the DP §15 rows, for example to D1–D9. |
@@ -1482,7 +1622,8 @@ One line each, with the reason. A "residue" is a small part worth keeping, and w
 ## Open questions
 
 - **Grafana:** which major version runs, and may we install the Infinity data-source plugin? G2's
-  findings table and G24's forecast panel depend on it.
+  dashboards target Grafana 11.x (`schemaVersion` 39). Its findings dashboard and G24's forecast
+  panel need Infinity.
 - **Time zones (G7):** do all services follow one local time zone, or do some need their own?
 - **Service catalog (G9):** who owns the file, and where does it live? This is the same owner
   question as X7's "who labels findings?".
