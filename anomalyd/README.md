@@ -327,6 +327,10 @@ Caps limit the memory:
 
 When a cap is hit, anomalyd drops the extra series and counts them. It never grows silently.
 
+At the default caps the rings alone can reach about 775 MB: 20 k metric series × 25 KB ≈ 500 MB,
+plus 50 k log series × 5.5 KB ≈ 275 MB. Templates and maps come on top. Size the server's memory
+limit for the caps you set, not for today's series count.
+
 ## Wiring it into our stack
 
 These examples use placeholder hostnames. Run the server inside the monitoring network.
@@ -533,9 +537,7 @@ All checks used synthetic data. Nothing touched our production systems.
 | Benchmarks | `go test -bench . ./internal/...` | Drain add 279 ns/line, tokenize 361 ns, extract 226 ns, score 110 µs full / 9 µs cached |
 | Footprint | `ANOMALYD_FOOTPRINT=1 go test ./internal/server -run Footprint -v` | 291 MB heap. Eval 841 ms cold / ~1 ms warm on one core. |
 | End to end | [test/e2e/run.sh](test/e2e/run.sh) (Docker, ~14 min) | PASS, see below |
-| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid. CI runs it on `deploy/*.yaml`. |
-| Fuzzing (2026-10-23) | `go test -run='^$' -fuzz=<target> -fuzztime=60s` for `FuzzDecode` (promrw), `FuzzHandlePush` (server), `FuzzTokenize` (drain) | No panic. `FuzzHandlePush` also checks that service names stay valid UTF-8: the 128-byte cut could split a rune. Fixed, with that input as a seed in `internal/server/testdata/fuzz`. CI fuzzes each target for 20 s. |
-| Grafana dashboards (2026-10-23) | Grafana 11.6.0 with [dashboards.yaml](deploy/grafana/dashboards.yaml), Prometheus v3.14.0 and Infinity 3.11.1, over a local server, agent and generators with an injected error burst. Every panel query through Grafana's `/api/ds/query`, and the panels rendered to images. | All four dashboards load. Every query returns data, except the newer self-metrics row. The band fill, threshold lines, annotations and heatmap render as intended. |
+| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid |
 | Routing through the repo's Alertmanager config | `amtool config routes test` against [../poc/prometheus/alertmanager.yml](../poc/prometheus/alertmanager.yml) (v0.34.0) | All three finding kinds → `llm-triage` + `chat-anomalies` (note 3) |
 | One-core comparison with the OTel `drain` processor | [test/bench/compare.sh](test/bench/compare.sh), plain and `CONTAINER=cri` | See [Why build this](#why-build-this-instead-of-using-the-python-pieces) |
 
@@ -548,10 +550,7 @@ Notes:
    - a deleted file that gets closed, and a new file at the same path that is read from the
      start
    - findings → Alertmanager payload, novelty and snapshot restore
-   - keyword severity, signature findings and absent series, each across a restart
    - the raw-log endpoint
-   - fuzz targets for the remote-write decoder, agent pushes (plain and gzip) and the
-     tokenizer
 2. We also wrapped the same lines with `gen logs --container …`. Results:
    - CRI: 1.48–1.60 M lines/s
    - Docker json-file: 0.54–0.59 M lines/s, because of the second JSON decode
@@ -598,6 +597,21 @@ We did not verify:
 - Remote write 2.0 and native histograms. They are not supported.
 - Transport Layer Security (TLS) and authentication on the endpoints. They do not exist. Keep
   the server on an internal network or behind a proxy.
+
+## Verification (2026-10-23)
+
+These checks cover the fixes and batch 1 of [feature-gaps.md](../docs/plans/feature-gaps.md)
+(G1, G2, G5, G6, G11, G12, G13). All used synthetic data.
+
+| Check | Command | Result |
+|---|---|---|
+| Unit tests, race detector | `go test -race -count=1 ./...`; `-count=5` on `internal/server` | pass, locally and in CI |
+| New tests catch their bug | Undo each fix, run its test, restore | Each new test fails without its fix |
+| Fuzzing | `go test -run='^$' -fuzz=<target> -fuzztime=60s` for `FuzzDecode` (promrw), `FuzzHandlePush` (server), `FuzzTokenize` (drain); later runs of 20–30 s | No panic. In 30 s: about 2.65 M executions of `FuzzDecode` and 137 k of `FuzzHandlePush`. In 20 s with `-fuzzminimizetime=2s`: about 315 k of `FuzzTokenize`. `FuzzHandlePush` found that the 128-byte cut of a service name could split a UTF-8 rune; fixed, with that input as a seed in `internal/server/testdata/fuzz`. CI fuzzes each target for 20 s. |
+| Manifests | `kubeconform -strict` on `deploy/*.yaml` | Valid; CI runs it |
+| Grafana dashboards | Grafana 11.6.0 with [dashboards.yaml](deploy/grafana/dashboards.yaml), Prometheus v3.14.0 and Infinity 3.11.1, over a local server, agent and generators with an injected error burst. Every panel query through Grafana's `/api/ds/query`, and the panels rendered to images. | All four dashboards load. Every query returns data, except the newer self-metrics row. The band fill, threshold lines, annotations and heatmap render as intended. |
+| End to end | The `e2e` workflow on GitHub ([test/e2e/run.sh](test/e2e/run.sh)) | PASS on the bug-fix commit ([run 39939031148](https://github.com/elvismanchkin/self-hosted-anomaly-detection/actions/runs/39939031148)) and on the merged batch 1 ([run 39954641389](https://github.com/elvismanchkin/self-hosted-anomaly-detection/actions/runs/39954641389)). The three injected incidents still became exactly three alerts, so the new alerts added none. |
+| Mixed versions | Old and new server × old and new agent, `--novelty-warmup 5s`, an idle agent, then 20 lines of one template | Old server with new agent: one `AnomalydLogNewTemplate`, because the old server takes a heartbeat as the start of log data. The other three pairs: none. So upgrade the server first (see [Wiring it into our stack](#wiring-it-into-our-stack)). |
 
 ## Known limitations
 

@@ -245,6 +245,8 @@ anomalyd is a pilot candidate for iteration 2. It does not replace the iteration
 | [docs/research/03-traces-jaeger.md](docs/research/03-traces-jaeger.md) | Jaeger v1/v2, span metrics, tail sampling, pipeline topology, trace-level anomaly detection |
 | [docs/research/04-aiops-rca-llm-cost.md](docs/research/04-aiops-rca-llm-cost.md) | Alert correlation, root cause analysis (RCA) tools, LLM triage design and cost, commercial baselines |
 | [docs/research/05-methods-benchmarks.md](docs/research/05-methods-benchmarks.md) | Benchmark evidence (TSB-AD, Loghub), foundation models, method tiers, industry lessons |
+| [docs/plans/](docs/plans/) | Plans: [future improvements](docs/plans/future-improvements.md) (N, X, L items), [feature gaps](docs/plans/feature-gaps.md) (G1–G37 in batches), [model trainer](docs/plans/model-trainer.md), [deployment](docs/plans/deployment.md) |
+| [docs/research/06-feature-gaps-research.md](docs/research/06-feature-gaps-research.md) | What comparable products and recent research offer that we lack; how the 37 gaps in the feature-gaps plan were found and checked |
 | [poc/README.md](poc/README.md) | Configs and small services, how to run them, what was validated, gotchas found |
 | [anomalyd/README.md](anomalyd/README.md) | Go PoC: log miner on each node, central seasonal detector, benchmarks, resource model, end-to-end test |
 | [report/anomaly-detection-report.html](report/anomaly-detection-report.html) | Interactive summary report; live at https://elvismanchkin.github.io/self-hosted-anomaly-detection/ |
