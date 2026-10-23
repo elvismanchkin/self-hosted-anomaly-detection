@@ -61,6 +61,8 @@ type Config struct {
 	ExternalURL      string
 	StateDir         string
 	SnapshotEvery    time.Duration
+
+	Version, Revision string // reported by anomalyd_build_info
 }
 
 type Server struct {
@@ -79,6 +81,9 @@ type Server struct {
 	tmplMu  sync.Mutex
 	tmpl    map[tmplKey]*tmplMeta
 	aliases map[string]map[string]int // service -> agent template text -> global template id
+	created map[string]int64          // service -> templates created since start-up
+
+	agents agentRegistry
 
 	findMu   sync.Mutex
 	active   map[string]*Finding
@@ -91,6 +96,7 @@ type Server struct {
 type stats struct {
 	rwRequests, rwErrors, rwSamples, rwDropped atomic.Int64
 	logLines, logPushes, logPushErrors         atomic.Int64
+	logPushBadStep                             atomic.Int64
 	alertsSent, alertErrors                    atomic.Int64
 	evalNanos, evalSeries                      atomic.Int64
 	backfilled                                 atomic.Int64
@@ -128,7 +134,8 @@ func New(cfg Config) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, step: int64(cfg.Step / time.Second), started: time.Now(),
 		client: &http.Client{Timeout: 10 * time.Second}, ignore: map[string]bool{},
-		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, active: map[string]*Finding{}}
+		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, created: map[string]int64{},
+		active: map[string]*Finding{}, agents: agentRegistry{agents: map[string]*agentInfo{}}}
 	for _, l := range cfg.IgnoreLabels {
 		if l = strings.TrimSpace(l); l != "" {
 			s.ignore[l] = true
@@ -161,7 +168,7 @@ func (s *Server) Run(ctx context.Context) error {
 		ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 5 * time.Minute}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("anomalyd server listening", "addr", s.cfg.Listen, "step", s.cfg.Step,
+	slog.Info("anomalyd server listening", "addr", s.cfg.Listen, "version", s.cfg.Version, "step", s.cfg.Step,
 		"prom_ring_buckets", s.prom.Capacity(), "log_ring_buckets", s.logs.Capacity())
 
 	tick := time.NewTicker(s.cfg.EvalInterval)
@@ -213,6 +220,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/templates", s.handleTemplates)
 	mux.HandleFunc("POST /api/v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /api/v1/findings", s.handleFindings)
+	mux.HandleFunc("GET /api/v1/agents", s.handleAgents)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /-/healthy", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("OK\n")) })
 	return mux

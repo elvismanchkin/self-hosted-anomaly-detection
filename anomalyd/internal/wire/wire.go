@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"io"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -60,6 +61,18 @@ func (e *Expo) Sample(name string, labels [][2]string, v float64) {
 	e.w.WriteByte(' ')
 	e.w.WriteString(FormatFloat(v))
 	e.w.WriteByte('\n')
+}
+
+// BuildInfo writes the gauge name = 1 with the build's version, revision and Go version.
+func (e *Expo) BuildInfo(name, version, revision string) {
+	if version == "" {
+		version = "dev"
+	}
+	if revision == "" {
+		revision = "unknown"
+	}
+	e.Family(name, "Build of this binary (always 1).", "gauge")
+	e.Sample(name, [][2]string{{"version", version}, {"revision", revision}, {"goversion", runtime.Version()}}, 1)
 }
 
 func (e *Expo) Flush() error { return e.w.Flush() }

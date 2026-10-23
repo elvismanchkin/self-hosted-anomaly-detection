@@ -279,7 +279,7 @@ func (s *Server) queryRange(ctx context.Context, match string, from, to time.Tim
 
 // --- Logs ----------------------------------------------------------------------------------
 
-// handlePush ingests template counts from agents.
+// handlePush ingests template counts from agents. A push without items is a heartbeat.
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	s.stats.logPushes.Add(1)
 	var body io.Reader = http.MaxBytesReader(w, r.Body, 64<<20)
@@ -299,10 +299,22 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Agent buckets must nest in server buckets, or counts land in the wrong ones.
+	if p.Step < 0 || (p.Step > 0 && s.step%p.Step != 0) {
+		s.stats.logPushErrors.Add(1)
+		s.stats.logPushBadStep.Add(1)
+		s.agents.reject(p.Agent, p.Step, time.Now())
+		http.Error(w, fmt.Sprintf("agent step %ds does not divide server step %ds", p.Step, s.step), http.StatusBadRequest)
+		return
+	}
 	now := time.Now()
 	maxTS := now.Add(maxFuture).Unix()
 	valid := func(c [2]int64) bool { return c[1] > 0 && c[0] <= maxTS }
-	s.markLogStart(now)
+	if len(p.Items) > 0 {
+		s.markLogStart(now)
+	}
+	var lines int64
+	svcs := map[string]struct{}{}
 	for _, it := range p.Items {
 		if it.Template == "" {
 			continue
@@ -320,7 +332,12 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 				s.addLog(svc, id, level, c[0], c[1])
 			}
 		}
+		if total > 0 {
+			lines += total
+			svcs[svc] = struct{}{}
+		}
 	}
+	s.agents.record(p.Agent, p.Step, lines, svcs, now)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -348,6 +365,7 @@ func (s *Server) globalTemplate(service, text string, n int64, now time.Time) (s
 }
 
 func (s *Server) newTemplateLocked(svc string, id int, now time.Time) {
+	s.created[svc]++
 	start := s.logStart.Load()
 	s.tmpl[tmplKey{svc, id}] = &tmplMeta{levels: map[string]int64{}, created: now,
 		novel: start > 0 && now.Unix()-start >= int64(s.cfg.NoveltyWarmup/time.Second)}
@@ -361,7 +379,7 @@ func cleanService(svc string) string {
 		return "unknown"
 	}
 	if len(svc) > 128 {
-		svc = svc[:128]
+		svc = strings.ToValidUTF8(svc[:128], "") // a split rune would break the /metrics scrape
 	}
 	return svc
 }

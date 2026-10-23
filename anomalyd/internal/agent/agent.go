@@ -46,7 +46,9 @@ type Config struct {
 	MaxServices     int
 	MaxBacklog      int // count keys kept while the server is unreachable
 	Listen          string
-	Once            bool // read to EOF, push once, exit
+	Once            bool   // read to EOF, push once, exit
+	Version         string // reported by anomalyd_agent_build_info
+	Revision        string
 }
 
 type countKey struct {
@@ -368,12 +370,13 @@ func (a *Agent) merge(local map[countKey]*localCount, bucket int64) {
 }
 
 // push sends and clears the counts; on failure they are merged back (bounded by MaxBacklog).
+// With no counts it still sends an empty push, a heartbeat, so the server sees the agent alive.
 func (a *Agent) push(ctx context.Context) error {
 	a.mu.Lock()
 	counts := a.counts
 	a.counts = map[countKey]*countVal{}
 	a.mu.Unlock()
-	if len(counts) == 0 || a.cfg.Server == "" {
+	if a.cfg.Server == "" {
 		return nil
 	}
 	p := wire.Push{Agent: a.cfg.Name, Step: a.cfg.Step}
@@ -464,6 +467,7 @@ func (a *Agent) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	a.pool.Each(func(svc string, m *drain.Miner) {
 		e.Sample("anomalyd_agent_templates", [][2]string{{"service", svc}}, float64(m.Len()))
 	})
+	e.BuildInfo("anomalyd_agent_build_info", a.cfg.Version, a.cfg.Revision)
 	_ = e.Flush()
 }
 
