@@ -16,6 +16,8 @@
   and a replay harness for real logs.
 - It does not repeat [roadmap.md](../roadmap.md). It says what each item changes there
   ([Changes to the roadmap](#changes-to-the-roadmap)).
+- Gaps that none of these items covers, in small batches with batch 1 in progress, are in
+  [feature-gaps.md](feature-gaps.md).
 
 Terms and abbreviations: [glossary](../glossary.md). Code references are to functions, not line
 numbers, as of commit `a701af7`; the code is being edited in parallel.
