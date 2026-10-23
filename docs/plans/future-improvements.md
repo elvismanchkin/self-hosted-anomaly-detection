@@ -81,7 +81,7 @@ These are the concrete reasons behind the Now items.
 | The CRI/Docker timestamp is parsed away | `logparse.Envelope` has no time field | The event time we need is already on every stdout line, but is discarded. |
 | No persisted file offsets | agent keeps offsets in memory only | Lines written while the agent is down are lost; `--from-start` would double-count. |
 | At-least-once pushes with no dedupe | `agent.push` / `server.handlePush` | A retry after a timeout double-counts one push. |
-| Alerts are sent synchronously at the end of `Evaluate`, 10 s timeout per URL | `server.Evaluate` → `sendAlerts` | A slow Alertmanager delays scoring. There is only one sink type. |
+| Alerts are sent synchronously at the end of `Evaluate`, 10 s timeout per URL | `server.Evaluate` → `sendAlerts` | A slow Alertmanager delays scoring. There is only one sink type. Since commit `3bff8b4` all Alertmanagers are posted to in parallel (one timeout in total) and a resolve is re-sent until one accepts it, but the send is still on the evaluation loop. |
 | Findings exist only in memory, `/api/v1/findings` and Alertmanager | `server.Finding` | Nothing lands in Elasticsearch, so Kibana users cannot see or correlate findings with raw logs. |
 | `template_id` is a per-service Drain cluster number on the server | `server.globalTemplate` | Not stable after state loss, not joinable to anything in Elasticsearch. |
 | No TLS or auth on any endpoint | `server.Handler` | Anyone on the network can push counts or remote-write series. |

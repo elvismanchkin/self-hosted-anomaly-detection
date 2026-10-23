@@ -176,7 +176,10 @@ What this means for 200 GB–2 TB/day of logs:
 - **Buckets.** anomalyd keeps every series as fixed-width time buckets (`--step`, default 5 m).
   They sit in a ring of `(seasons + 1) × season / step + 2` float32 values. A ring has a fixed
   size: each new bucket overwrites the oldest one.
-  - Metric samples in a bucket are averaged.
+  - Metric samples in a bucket are averaged. A sample can arrive after its bucket closed, for
+    example from a slow remote-write shard. For the last 8 closed buckets it still joins the
+    mean, weighted by how many samples the bucket already has. An older closed bucket that
+    already has a value keeps it.
   - Log counts are summed. An empty log bucket counts as 0.
   - Metric buckets close by data time. So replayed or backfilled data scores the same way as
     live data.
