@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/detect"
@@ -392,20 +393,23 @@ type amAlert struct {
 }
 
 // sendAlerts re-sends every firing finding (endsAt in the future, so Alertmanager keeps it
-// open until we stop) and each resolved one once with endsAt = resolve time.
+// open until we stop) and each resolved one with endsAt = resolve time until a post succeeds.
+// All Alertmanagers are posted to in parallel, so unreachable ones delay evaluation by at most
+// one client timeout.
 func (s *Server) sendAlerts(now time.Time) {
 	if len(s.cfg.AlertmanagerURLs) == 0 {
 		return
 	}
 	hold := max(4*s.cfg.EvalInterval, 2*time.Minute)
 	var alerts []amAlert
+	var resolving []*Finding
 	s.findMu.Lock()
 	for _, f := range s.active {
 		alerts = append(alerts, s.toAM(f, now.Add(hold)))
 	}
 	for _, f := range s.resolved {
 		if !f.resolveSent {
-			f.resolveSent = true
+			resolving = append(resolving, f)
 			alerts = append(alerts, s.toAM(f, f.EndsAt))
 		}
 	}
@@ -414,20 +418,35 @@ func (s *Server) sendAlerts(now time.Time) {
 		return
 	}
 	body, _ := json.Marshal(alerts)
+	var wg sync.WaitGroup
+	var delivered atomic.Bool
 	for _, u := range s.cfg.AlertmanagerURLs {
-		resp, err := s.client.Post(strings.TrimRight(u, "/")+"/api/v2/alerts", "application/json", bytes.NewReader(body))
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode/100 != 2 {
-				err = fmt.Errorf("status %s", resp.Status)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := s.client.Post(strings.TrimRight(u, "/")+"/api/v2/alerts", "application/json", bytes.NewReader(body))
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode/100 != 2 {
+					err = fmt.Errorf("status %s", resp.Status)
+				}
 			}
+			if err != nil {
+				s.stats.alertErrors.Add(1)
+				slog.Warn("alertmanager post failed", "url", u, "err", err)
+				return
+			}
+			delivered.Store(true)
+			s.stats.alertsSent.Add(int64(len(alerts)))
+		}()
+	}
+	wg.Wait()
+	if delivered.Load() { // Alertmanager peers gossip, so one accepting is enough
+		s.findMu.Lock()
+		for _, f := range resolving {
+			f.resolveSent = true
 		}
-		if err != nil {
-			s.stats.alertErrors.Add(1)
-			slog.Warn("alertmanager post failed", "url", u, "err", err)
-			continue
-		}
-		s.stats.alertsSent.Add(int64(len(alerts)))
+		s.findMu.Unlock()
 	}
 }
 

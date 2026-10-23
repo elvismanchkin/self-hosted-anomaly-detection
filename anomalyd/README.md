@@ -214,7 +214,9 @@ What this means for 200 GB–2 TB/day of logs:
 - **Restarts.** anomalyd saves templates and ring buffers to `--state-dir` every
   `--snapshot-interval` and on SIGTERM (the stop signal). It uses Go's gob format and an atomic
   rename, so a crash never leaves a half-written file. After a restore, known templates stay
-  known and there is no second warm-up.
+  known and there is no second warm-up. Firing findings are saved too: they keep their start
+  time at Alertmanager and resolve the normal way. Without that, Alertmanager would close them
+  when the hold ran out, and they would fire again later with a new start time.
 
 anomalyd sends four alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
 drop.
@@ -433,6 +435,10 @@ We did not verify:
   or an LLM.
 - **Agents push at least once**. So a retry after a timeout can double-count one push. The
   agent does not save its file offsets. So it misses the lines written while it is down.
+- **Counts are dated when the agent reads the line**, not by the timestamp in the line. A
+  backlog (after `--from-start`, or while the agent catches up on a busy node) lands in the
+  minute it is read, so it can look like a spike. The agent stops catching up after one
+  `--flush-interval` to push what it has, so a long backlog does not hold back pushes.
 - **Rotation race**. When a new file appears at a path, the agent reads the old file to its end
   once, then switches. It misses lines that are still written to the old file after that. It
   does not read rotated `.gz` files.
