@@ -98,14 +98,14 @@ func TestSaveDoesNotBlockPushes(t *testing.T) {
 		b, _ := json.Marshal(wire.Push{Agent: "host-a", Step: 60, Items: []wire.Item{known,
 			{Service: "svc", Template: "disk <*> full", Level: "error", Counts: [][2]int64{{now, 3}}}}})
 		code = post(t, h, "/api/v1/templates", "application/json", b).Code
+		s.findMu.Lock()
+		s.active["k"].Annotations["summary"] = "after" // as evaluation does
+		s.findMu.Unlock()
 	}()
-	waitFor(t, "a push during the snapshot write", pushed)
+	waitFor(t, "a push and a finding update during the snapshot write", pushed)
 	if code != http.StatusNoContent {
 		t.Fatalf("push: %d", code)
 	}
-	s.findMu.Lock()
-	s.active["k"].Annotations["summary"] = "after" // as evaluation does
-	s.findMu.Unlock()
 
 	g.open()
 	<-saved
