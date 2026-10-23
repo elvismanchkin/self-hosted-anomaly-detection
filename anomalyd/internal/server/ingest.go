@@ -55,6 +55,7 @@ type seriesInfo struct {
 	lastData int64 // bucket of the last sample (non-zero for log series)
 
 	absent      uint8 // absNone, absFiring, absExpired (AnomalydSeriesAbsent)
+	written     bool  // remote write delivered it in this process (a backfill-only copy is never absent)
 	absentRun   int   // missing buckets in a row while other series had data
 	absentSince int64 // first bucket of that run
 }
@@ -151,7 +152,7 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 				bk := sec / s.step
 				sr.Add(bk, smp.Value)
 				newest = max(newest, sec)
-				info.lastData = max(info.lastData, bk)
+				info.lastData, info.written = max(info.lastData, bk), true
 				if bk != marked && bk > 0 {
 					s.markSeen(bk)
 					marked = bk

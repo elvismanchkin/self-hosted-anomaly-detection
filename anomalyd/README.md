@@ -229,17 +229,23 @@ What this means for 200 GB–2 TB/day of logs:
   [Wiring](#wiring-it-into-our-stack)). A template that matches one fires
   `AnomalydLogSignature` on its first lines. It does not wait for `--novelty-min-lines` or the
   warm-up. There is at most one finding per service and signature per 24 h, also across
-  restarts. It stays firing for `--novelty-ttl`. `anomalyd_signature_matches_total{signature}`
-  counts the matching lines.
+  restarts with `--state-dir`. It stays firing for `--novelty-ttl`.
+  `anomalyd_signature_matches_total{signature}` counts the matching lines.
 - **Absent series.** A metric series that stops arriving fires `AnomalydSeriesAbsent`:
   - It fires after `--absent-buckets` (default 3, 0 = off) missing buckets in a row.
   - Only buckets that other remote-write series reached count. So a Prometheus restart, when
     no series arrives, is not an absence.
+  - The series must have come by remote write since anomalyd started. A backfilled copy that
+    remote write never sends is not absent. This happens, for example, when Prometheus adds an
+    external label that is not in `--ignore-labels`.
   - It covers only series where both directions count, such as request rates. Errors or
     latency going away is not a problem.
   - The last expected value must be above the scale floor: `--abs-floor` for its
-    `anomaly_type`, or zero without one. So set, for example, `--abs-floor requests=0.1` to
-    ignore near-idle series.
+    `anomaly_type`, or zero without one. So set, for example,
+    `--abs-floor errors=0.001,requests=0.1` to ignore near-idle series. The flag replaces the
+    default list, so keep `errors=0.001` in it.
+  - A series must arrive more often than every `--absent-buckets` × `--step`. A recording rule
+    that runs less often looks absent between its runs.
   - It resolves when data returns, or `--absent-ttl` (default 24 h) after the series stopped,
     for a service that was shut down on purpose. After that, the series is dropped once a full
     ring has gone by without data.
@@ -513,9 +519,14 @@ We did not verify:
   counts exists.
 - **Keywords only see fixed words**. When Drain turns a keyword into `<*>` (`Caught <*>` from
   two exception names), the template loses its keyword level. Signatures see the same text.
-- **Absence needs a scored series**. A series is reported absent only if it was scored at least
-  once in this process. So a series that stops while anomalyd is down is not reported after the
-  restart. A renamed series (a label changed) looks absent until `--absent-ttl`.
+- **Absence needs a scored series**. A series is reported absent only if remote write sent it,
+  and it was scored, in this process. So a series that stops while anomalyd is down is not
+  reported after the restart. A renamed series (a label changed) looks absent until
+  `--absent-ttl`.
+- **Absence trusts the data clock**. A bucket counts as missing once any other series reached
+  it. With several Prometheus servers writing to one anomalyd, one that stops makes all its
+  series absent. While Prometheus sends a backlog, its remote-write shards can be minutes
+  apart, and a series that is only late can look absent for a moment.
 - **One season per source**, set by `--prom-season` and `--log-season`. Holidays and multiple
   seasons at once are out of scope for the PoC. Multiple seasons need a method such as
   [MSTL](https://arxiv.org/abs/2107.13462) (seasonal-trend decomposition for multiple seasonal

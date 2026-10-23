@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -168,5 +170,57 @@ func TestSeriesAbsentTTLAndGC(t *testing.T) {
 		if fired != 4 || resolved != ttlB+2 || deleted != max(123, ttlB+2) {
 			t.Fatalf("ttl %s: fired %d resolved %d deleted %d, want 4, %d, %d", ttl, fired, resolved, deleted, ttlB+2, max(123, ttlB+2))
 		}
+	}
+}
+
+// A backfilled copy that remote write never delivers (here: Prometheus adds an external label
+// that is not in --ignore-labels) is not absent; only a series that arrived and stopped is.
+func TestBackfillOnlySeriesNotAbsent(t *testing.T) {
+	now := time.Now().Unix() / 60 * 60
+	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		var vals []string
+		for ts := now - 3*3600; ts < now; ts += 60 {
+			vals = append(vals, fmt.Sprintf(`[%d,"100"]`, ts))
+		}
+		fmt.Fprintf(w, `{"status":"success","data":{"result":[{"metric":{"__name__":"anomaly:svc:requests:rate1m",`+
+			`"anomaly_type":"requests","service":"checkout"},"values":[%s]}]}}`, strings.Join(vals, ","))
+	}))
+	defer prom.Close()
+	cfg := absentConfig()
+	cfg.BackfillURL = prom.URL
+	s, _ := New(cfg)
+	if _, err := s.queryRange(context.Background(), "x", time.Unix(now-3*3600, 0), time.Unix(now, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var enc promrw.Encoder
+	for i := int64(0); i < 6; i++ {
+		x := promrw.Series{Labels: [][2]string{{"__name__", "anomaly:svc:requests:rate1m"}, {"anomaly_type", "requests"},
+			{"cluster", "prod"}, {"service", "checkout"}}, Samples: []promrw.Sample{{Value: 100, Timestamp: (now + 60*i) * 1000}}}
+		post(t, s.Handler(), "/api/v1/write", "application/x-protobuf", enc.Encode([]promrw.Series{x}))
+		s.Evaluate(time.Now())
+	}
+	if s.prom.Len() != 2 || countKind(s, kindMetricAbsent) != 0 {
+		t.Fatalf("series %d, absent findings %d; want 2 and none", s.prom.Len(), countKind(s, kindMetricAbsent))
+	}
+}
+
+// Restored metric series keep the bucket of their last sample, so gc does not drop the ones the
+// first remote writes after a restart have not carried yet.
+func TestRestoredMetricSeriesKeptByGC(t *testing.T) {
+	cfg := absentConfig()
+	cfg.StateDir = t.TempDir()
+	s, _ := New(cfg)
+	base := time.Now().Unix()/60*60 - 3*3600
+	(&absentRig{t: t, s: s}).write(base, base+3*3600, "checkout", "auth")
+	if err := s.save(); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := New(cfg)
+	if err := s2.load(); err != nil {
+		t.Fatal(err)
+	}
+	(&absentRig{t: t, s: s2}).write(base+3*3600, base+3*3600+60, "auth")
+	if !s2.prom.Lookup(absentKey("checkout"), func(*series.Series) {}) {
+		t.Fatal("gc dropped a restored series with recent data")
 	}
 }

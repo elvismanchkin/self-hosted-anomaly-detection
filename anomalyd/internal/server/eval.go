@@ -196,13 +196,13 @@ func (s *Server) evalSeries(sr *series.Series, last int64, scratch *[]float64, o
 
 // trackAbsent fires AnomalydSeriesAbsent for a metric series whose drop matters (both
 // directions count) once it misses AbsentBuckets buckets in a row while other series still
-// arrive, if its last expected value was above the scale floor. A bucket that no series reached
-// neither counts nor breaks the run. It resolves when data returns or after AbsentTTL.
+// arrive, if remote write delivered it in this process and its last expected value was above the
+// scale floor. A bucket that no series reached neither counts nor breaks the run. It resolves
+// when data returns or after AbsentTTL.
 func (s *Server) trackAbsent(sr *series.Series, info *seriesInfo, b int64, out *[]event) {
-	key := absentPrefix + sr.Key
 	if !math.IsNaN(sr.At(b)) {
 		if info.absent == absFiring {
-			*out = append(*out, event{typ: evResolve, key: key})
+			*out = append(*out, event{typ: evResolve, key: absentPrefix + sr.Key})
 		}
 		info.absent, info.absentRun = absNone, 0
 		return
@@ -211,16 +211,16 @@ func (s *Server) trackAbsent(sr *series.Series, info *seriesInfo, b int64, out *
 	case info.absent == absFiring:
 		if s.absentTTL > 0 && b-info.absentSince >= s.absentTTL {
 			info.absent = absExpired
-			*out = append(*out, event{typ: evResolve, key: key})
+			*out = append(*out, event{typ: evResolve, key: absentPrefix + sr.Key})
 		}
 	case info.absent == absNone && s.seen(b):
 		if info.absentRun == 0 {
 			info.absentSince = b
 		}
 		info.absentRun++
-		if info.absentRun >= s.cfg.AbsentBuckets && info.lastOK && info.last.Expected > info.params.AbsFloor {
+		if info.absentRun >= s.cfg.AbsentBuckets && info.written && info.lastOK && info.last.Expected > info.params.AbsFloor {
 			info.absent = absFiring
-			*out = append(*out, event{typ: evFire, key: key, kind: kindMetricAbsent, labels: sr.Labels,
+			*out = append(*out, event{typ: evFire, key: absentPrefix + sr.Key, kind: kindMetricAbsent, labels: sr.Labels,
 				r: info.last, bucket: info.absentSince, dir: -1})
 		}
 	}
