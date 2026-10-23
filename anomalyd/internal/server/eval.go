@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -587,14 +588,21 @@ func (s *Server) toAM(f *Finding, ends time.Time) amAlert {
 // handleFindings serves active and recently resolved findings (?id= for one, ?state=firing).
 func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	id, state := r.URL.Query().Get("id"), r.URL.Query().Get("state")
+	// Copies own their maps: they are encoded after findMu is released, while evaluation
+	// rewrites a firing finding's annotations in place.
+	cp := func(f *Finding) Finding {
+		c := *f
+		c.Labels, c.Annotations = maps.Clone(f.Labels), maps.Clone(f.Annotations)
+		return c
+	}
 	s.findMu.Lock()
 	out := []Finding{} // [] rather than null when empty
 	for _, f := range s.active {
-		out = append(out, *f)
+		out = append(out, cp(f))
 	}
 	if state != "firing" {
 		for _, f := range s.resolved {
-			out = append(out, *f)
+			out = append(out, cp(f))
 		}
 	}
 	s.findMu.Unlock()
