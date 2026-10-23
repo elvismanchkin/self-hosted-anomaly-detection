@@ -5,3 +5,6 @@ __pycache__/
 # Upstream rules fetched for tests (see poc/README.md), not vendored
 poc/prometheus/vendor/
 anomalyd/test/e2e/out/
+# Claude Code: local settings and parallel worktrees
+.claude/settings.local.json
+.claude/worktrees/
