@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/promrw"
+	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/series"
 )
 
 // A resolve is re-sent until an Alertmanager accepts it; one healthy peer is enough.
@@ -106,5 +107,32 @@ func TestMetricFindingSurvivesRestart(t *testing.T) {
 	if len(s2.active) != 0 || len(s2.resolved) != 1 || s2.resolved[0].key != key ||
 		!s2.resolved[0].StartsAt.Equal(started) {
 		t.Fatalf("active %d, resolved %+v", len(s2.active), s2.resolved)
+	}
+}
+
+// /api/v1/findings encodes copies of findings after releasing findMu; evaluation rewrites a
+// firing finding's annotations in place, so the copies must not share its maps (go test -race).
+func TestFindingsAPIDoesNotShareMaps(t *testing.T) {
+	s, _ := New(testConfig())
+	h := s.Handler()
+	key := "k"
+	ev := event{key: key, kind: kindMetric, labels: series.Labels{{Name: "__name__", Value: "m"}, {Name: "service", Value: "svc"}}}
+	s.apply([]event{{typ: evFire, key: key, kind: kindMetric, labels: ev.labels}}, time.Now())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 2000 {
+			ev.typ, ev.r.Score = evUpdate, float64(i)
+			s.apply([]event{ev}, time.Now())
+		}
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/findings", nil))
 	}
 }

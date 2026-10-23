@@ -201,8 +201,11 @@ It has two roles:
   - receives the anomaly-input recording rules by `remote_write`, and loads their history from
     Prometheus once (backfill)
   - scores every series against a seasonal median + MAD baseline
-  - detects new log templates
+  - detects new log templates, and templates that match a list of known-bad signatures
+  - reports a metric series that stops arriving, instead of treating the gap as healthy
   - sends findings with `tier` labels to Alertmanager
+  - ships Grafana dashboards for its scores, bands and own health
+    ([anomalyd/deploy/grafana](anomalyd/deploy/grafana/))
 
 Measured on synthetic data (details and commands in [anomalyd/README.md](anomalyd/README.md)):
 

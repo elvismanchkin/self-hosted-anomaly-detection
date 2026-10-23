@@ -26,21 +26,26 @@ Sections:
 
 | Term | Meaning | Learn more |
 |---|---|---|
+| absent series | A metric series that stopped arriving while other remote-write series still arrive. anomalyd reports it as `AnomalydSeriesAbsent` instead of treating the gap as healthy. | [anomalyd/README.md](../anomalyd/README.md#how-detection-works) |
 | AD Prometheus | Anomaly-detection Prometheus: an optional small second Prometheus. It receives only the service-level recording rules by `remote_write` and keeps them 90 days. | [reference architecture](reference-architecture.md#notes-on-the-diagram) |
+| agent registry | The anomalyd server's list of the agents that pushed in the last 24 hours: last push, step, lines and services. `GET /api/v1/agents` shows it. | [anomalyd/README.md](../anomalyd/README.md#wiring-it-into-our-stack) |
 | anomaly input | A service-level series tagged for detection with the labels `anomaly_name`, `anomaly_type` and, optionally, `anomaly_strategy`. We plan 3–5 k of them. | [research/02 §1.1](research/02-metrics-prometheus.md) |
 | anomaly score floor | The scale is the largest of 1.4826 × MAD of past residuals and the floors, so flat series do not give huge scores. Log-count floors: 10 % of expected, 1 line, √expected. | [anomalyd/README.md](../anomalyd/README.md) |
 | `anomaly_score` | Our tier-2 scorer's output: a signed robust z-score of the latest point. The PoC alert fires when the absolute score is above 4. In vmanomaly, the same name means anomalous above 1. | [prom_anomaly_job.py](../poc/ml/prom_anomaly_job.py) |
 | anomalyd | Our own small Go engine, a second PoC. `anomalyd agent` mines log templates on each node. `anomalyd server` scores series and sends findings. | [anomalyd/README.md](../anomalyd/README.md) |
 | backfill | Loading the past values of a series once, at start-up, so that scoring can begin at once. anomalyd backfills from Prometheus with `query_range`. | [anomalyd/README.md](../anomalyd/README.md) |
 | bundle | The context of one Alertmanager alert group, sent to the LLM in one call: alert labels, related series, template changes, trace IDs and recent deploys. | [reference architecture, note 4](reference-architecture.md#what-each-tier-does) |
+| data clock | The time of the newest remote-write sample. anomalyd closes metric buckets by it, not by the wall clock, so replayed data scores like live data. | [anomalyd/README.md](../anomalyd/README.md#how-detection-works) |
 | e2e test (end-to-end test) | Our Docker test of anomalyd with real Prometheus 3.14.0 and Alertmanager 0.34.0. The logs are written as CRI container stdout. | [anomalyd verification](../anomalyd/README.md#verification-2026-09-15) |
 | finding | An anomaly alert from tier 1 or tier 2. It carries the label `tier: "1"` or `"2"` and goes to chat or tickets, never to a pager. | [reference architecture](reference-architecture.md#what-each-tier-does) |
 | gotcha | A surprising problem that we hit while testing. poc/README lists them with their fixes. | [poc/README.md](../poc/README.md#gotchas-found-while-validating) |
+| heartbeat push | An empty push that the anomalyd agent sends when it has no counts, so the server sees it alive. Not the same as a heartbeat alert. | [anomalyd/README.md](../anomalyd/README.md#wiring-it-into-our-stack) |
 | incident log | Our list of past incidents with timestamps. Iteration 1 must create it, so that we can measure iteration 2 against it. | [roadmap](roadmap.md#exit-criteria-for-iteration-1) |
 | `.internal` host names | Placeholder host names in our examples, such as `prometheus.internal`. Replace them with your own hosts. | — |
 | iteration 1 | Weeks 1–4 of the plan. We add free components only and swap nothing. Only SLO burn-rate alerts page a person. | [roadmap](roadmap.md#iteration-1-add-ons-only-weeks-14) |
 | iteration 2 | Months 2–3 of the plan. We add a second-stage scorer, a log-mining pilot and LLM triage with a $100/month cap. | [roadmap](roadmap.md#iteration-2-second-stage-confirmation-and-llm-triage-months-23) |
 | iteration 3 | Quarter 2 and later. Optional swaps and heavier models, only if the numbers from iterations 1–2 justify them. | [roadmap](roadmap.md#iteration-3-optional-swaps-and-heavier-models-quarter-2) |
+| keyword severity, inferred level | A level that anomalyd reads from keywords in a template's fixed words, such as `panic` or `OutOfMemoryError`, for lines that carry no level word. | [anomalyd/README.md](../anomalyd/README.md#how-detection-works) |
 | log rollup | The Elasticsearch index `anomaly-logs-tmpl-1m`. A transform fills it with line counts per template per minute. | [reference architecture](reference-architecture.md#how-the-data-flows) |
 | method tiers (research/02, research/05) | The tier numbers in research/02 §9 and research/05 §6. They group methods by cost and are not our detection tiers T0–T3. research/02 has tiers 0, 0.5, 1, 2, 2b (LLM triage) and 3. In research/05, Tier 2 is machine learning on the top-K series and Tier 3 is foundation models and LLMs. | [research/05 §6](research/05-methods-benchmarks.md#6-method-tiers-for-our-stack) |
 | our stack | Filebeat → Elasticsearch/Kibana on the free Basic licence, Prometheus + Grafana OSS + Alertmanager, and Jaeger. 200 GB–2 TB/day of logs, 1–10 M series. | [README](../README.md#what-we-want) |
@@ -49,6 +54,7 @@ Sections:
 | PoC (proof of concept) | A small working version that tests an idea. Our PoC configs and code are validated on synthetic data, not in production. | [poc/README.md](../poc/README.md) |
 | scorer (tier-2 scorer) | The program that compares each top-K series with its seasonal median and MAD. It exists in Python (`prom_anomaly_job.py`) and in Go (anomalyd). | [roadmap](roadmap.md#1-tier-2-scorer) |
 | second reader | A second program that reads the same container log files as Filebeat, for example the OTel `file_log` receiver or the anomalyd agent. Filebeat stays unchanged. | [reference architecture](reference-architecture.md#notes-on-the-diagram) |
+| signature watchlist, signature file | A list of named regexes for known-bad log templates (`--signature-file`). A matching template fires `AnomalydLogSignature` on its first lines. | [anomalyd/README.md](../anomalyd/README.md#wiring-it-into-our-stack) |
 | Step 0 | A half-day check before iteration 1. We read the version, licence and features of each tool, and collect an inventory. | [roadmap](roadmap.md#step-0-confirm-what-is-actually-running-half-a-day) |
 | synthetic data | Generated test data, not our real logs or metrics. All our measurements so far use synthetic data. | [Wikipedia](https://en.wikipedia.org/wiki/Synthetic_data) |
 | T0 | Detection tier 0: rules and SLO burn-rate alerts, plus heartbeat, flatline and `predict_linear` alerts. The only tier that pages a person. | [reference architecture](reference-architecture.md#what-each-tier-does) |
@@ -162,7 +168,9 @@ Sections:
 | Term | Meaning | Learn more |
 |---|---|---|
 | active series, head series | The series that Prometheus holds in memory because they got samples recently. Our main Prometheus has 1–10 M. | [Prometheus storage](https://prometheus.io/docs/prometheus/latest/storage/) |
+| build info metric | A gauge that is always 1 and carries the version, the git revision and the Go version as labels, for example `anomalyd_build_info`. | [anomalyd/README.md](../anomalyd/README.md#wiring-it-into-our-stack) |
 | cardinality, label cardinality | The number of distinct label combinations, that is, the number of series. High cardinality costs memory and CPU. | [Prometheus naming](https://prometheus.io/docs/practices/naming/#labels) |
+| dashboard provisioning (Grafana) | Loading dashboards from files (or a ConfigMap) when Grafana starts, instead of creating them in the UI. The anomalyd dashboards ship with a provisioning file. | [Grafana docs](https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards) |
 | delta, cumulative | Two ways to report a sum. A delta reports the change since the last report. A cumulative sum reports the running total. | [OTel data model](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#sums) |
 | federation | One Prometheus scrapes chosen series from another Prometheus through its `/federate` endpoint. | [Prometheus docs](https://prometheus.io/docs/prometheus/latest/federation/) |
 | golden signals | Four signals to watch for each service: latency, traffic, errors and saturation (Google SRE book). | [Google SRE book](https://sre.google/sre-book/monitoring-distributed-systems/) |
@@ -171,6 +179,7 @@ Sections:
 | Grafana OSS | The free, open-source (AGPLv3) edition of Grafana that we run. | [Grafana OSS](https://grafana.com/oss/grafana/) |
 | `grafana/promql-anomaly-detection` | An open-source set of Prometheus recording rules from Grafana Labs. It computes adaptive and robust bands. | [GitHub](https://github.com/grafana/promql-anomaly-detection) |
 | histogram, bucket, `le` | A Prometheus metric that counts observations per bucket. `le` ("less or equal") is the upper limit of a bucket. Used for latency percentiles. | [Prometheus docs](https://prometheus.io/docs/practices/histograms/) |
+| Infinity data source | A Grafana data-source plugin that reads JSON or CSV from an HTTP API. The anomalyd findings dashboard reads `/api/v1/findings` with it. | [Grafana plugin](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/) |
 | keep-filter | A `remote_write` relabel rule that forwards only the matching series, for example only `anomaly:svc:*`. | [Prometheus config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write) |
 | label | A key=value pair on a series, for example `service="checkout"`. Each label combination is a separate series. | [Prometheus data model](https://prometheus.io/docs/concepts/data_model/) |
 | MetricsQL | VictoriaMetrics' query language, a superset of PromQL. | [VictoriaMetrics docs](https://docs.victoriametrics.com/victoriametrics/metricsql/) |
@@ -185,6 +194,7 @@ Sections:
 | remote_write | A Prometheus feature that sends copies of chosen samples to another server as they arrive. | [Prometheus spec](https://prometheus.io/docs/specs/prw/remote_write_spec/) |
 | retention | How long Prometheus keeps data. Weekly bands need 7+ days. SLO windows need 30 days. | [Prometheus storage](https://prometheus.io/docs/prometheus/latest/storage/) |
 | sample | One value with a timestamp, inside a series. | [Prometheus data model](https://prometheus.io/docs/concepts/data_model/) |
+| `schemaVersion` (Grafana dashboard) | The version of a Grafana dashboard's JSON format. The anomalyd dashboards use 39, the format of Grafana 11.x. | [Grafana docs](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/view-dashboard-json-model/) |
 | scrape, scrape interval | Prometheus pulls the current metric values from each target's HTTP endpoint. The scrape interval says how often, for example every 15 s or 60 s. | [Prometheus docs](https://prometheus.io/docs/concepts/jobs_instances/) |
 | series (time series) | A stream of timestamped values with one metric name and one set of labels. | [Prometheus data model](https://prometheus.io/docs/concepts/data_model/) |
 | service-level series | A series summed per service, not per pod or host. Detection runs only on these (3–5 k), never on the raw 1–10 M series. | [reference architecture](reference-architecture.md#three-rules-the-design-follows) |
@@ -328,6 +338,7 @@ Sections:
 
 | Term | Meaning | Learn more |
 |---|---|---|
+| ConfigMap | A Kubernetes object that holds configuration files or values. Pods mount it as files, for example anomalyd's signature file. | [Kubernetes docs](https://kubernetes.io/docs/concepts/configuration/configmap/) |
 | container runtime | The software that runs containers on a node, for example containerd or CRI-O. It writes each container's stdout and stderr to a file. | [Kubernetes docs](https://kubernetes.io/docs/setup/production-environment/container-runtimes/) |
 | CRD (custom resource definition) | A Kubernetes extension type. Sloth and Pyrra use one for SLO objects. | [Kubernetes docs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) |
 | CRI (Container Runtime Interface) | The Kubernetes interface between kubelet and the container runtime. Its log format adds `<time> <stream> <P\|F>` before each line. | [Kubernetes docs](https://kubernetes.io/docs/concepts/containers/cri/) |
@@ -338,7 +349,7 @@ Sections:
 | headless service | A Kubernetes Service without one virtual IP. Its DNS name returns the address of each pod. | [Kubernetes docs](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) |
 | `hostPath` | A pod volume that mounts a directory of the node, for example `/var/log`. | [Kubernetes docs](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) |
 | HPA (Horizontal Pod Autoscaler) | A Kubernetes object that adds or removes pods according to load. | [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/) |
-| kubeconform | A tool that checks Kubernetes manifests against the API schemas. We check `agent-daemonset.yaml` with it. | [GitHub](https://github.com/yannh/kubeconform) |
+| kubeconform | A tool that checks Kubernetes manifests against the API schemas. CI checks `anomalyd/deploy/*.yaml` with it (`-strict`). | [GitHub](https://github.com/yannh/kubeconform) |
 | kubelet | The Kubernetes agent on each node. It has the runtime write container logs to files and rotates them (10 MiB, 5 files by default). | [Kubernetes logging](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) |
 | node | One machine, virtual or physical, in the cluster. | [Kubernetes docs](https://kubernetes.io/docs/concepts/architecture/nodes/) |
 | pod | The smallest unit that Kubernetes runs: one or more containers that share network and storage. | [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/) |
@@ -443,6 +454,7 @@ Sections:
 | DNS (Domain Name System) | The system that turns host names into IP addresses. | [Wikipedia](https://en.wikipedia.org/wiki/Domain_Name_System) |
 | FLOP (floating-point operation) | One arithmetic step on decimal numbers. GFLOP and TFLOP mean 10⁹ and 10¹² of them. We use them to estimate LLM speed. | [Wikipedia](https://en.wikipedia.org/wiki/Floating_point_operations_per_second) |
 | FNV-1a (Fowler–Noll–Vo) | A fast hash function. It is not meant for security. | [Wikipedia](https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function) |
+| fuzz test, fuzzing | A test that feeds generated random inputs to a function to find crashes. Inputs that once failed are kept as seeds, and `go test` reruns them. | [Go docs](https://go.dev/doc/security/fuzz/) |
 | GC (garbage collection) | Automatic freeing of unused memory, for example in the Go runtime. | [Wikipedia](https://en.wikipedia.org/wiki/Garbage_collection_%28computer_science%29) |
 | GitOps | Keeping configs in Git and applying them to the systems from there. | [OpenGitOps](https://opengitops.dev/) |
 | gob | Go's own binary data format. anomalyd saves its snapshots in it. | [Go docs](https://pkg.go.dev/encoding/gob) |
@@ -450,21 +462,26 @@ Sections:
 | heap | Memory that a program allocates while it runs. Go's heap does not include all the memory that the process holds (see RSS). | [Wikipedia](https://en.wikipedia.org/wiki/Memory_management) |
 | IO (input/output) | Reads and writes, usually to disk or over the network. | [Wikipedia](https://en.wikipedia.org/wiki/Input/output) |
 | ISO 8601 timestamp | A standard date-time format, for example `2026-09-14T00:00:00.001Z`. | [Wikipedia](https://en.wikipedia.org/wiki/ISO_8601) |
+| jq | A command-line tool that reads and filters JSON. CI uses it to check the Grafana dashboards. | [jq](https://jqlang.org/) |
 | JVM (Java virtual machine) | The runtime for Java programs. OpenSearch keeps its anomaly models in the JVM's memory (heap). | [Wikipedia](https://en.wikipedia.org/wiki/Java_virtual_machine) |
 | k, M, B (in numbers) | Thousand, million, billion. "3–5 k series" means 3,000–5,000 series. "1–10 M" means 1–10 million. | [Wikipedia](https://en.wikipedia.org/wiki/Metric_prefix) |
+| ldflags `-X` | A Go linker flag that sets a string variable at build time. anomalyd uses `-X main.version` to embed its version. | [Go docs](https://pkg.go.dev/cmd/link) |
 | LRU (least recently used) | A cache rule that drops the entry that was unused for the longest time. | [Wikipedia](https://en.wikipedia.org/wiki/Cache_replacement_policies#LRU) |
 | MiB, GiB | Binary size units: 1 MiB = 1,048,576 bytes, 1 GiB = 1,073,741,824 bytes. MB and GB are 10⁶ and 10⁹ bytes. | [Wikipedia](https://en.wikipedia.org/wiki/Byte) |
 | ms, µs | Milliseconds (thousandths of a second) and microseconds (millionths of a second). | [Wikipedia](https://en.wikipedia.org/wiki/Microsecond) |
 | PR (pull request) | A proposed code change on GitHub. Others review it before it is merged. | [GitHub docs](https://docs.github.com/en/pull-requests/reference/pull-requests) |
 | race detector | A Go test mode (`go test -race`) that finds unsafe shared-memory access between threads. | [Go docs](https://go.dev/doc/articles/race_detector) |
+| RE2 | The regex syntax of Go's `regexp` package. It runs in linear time and has no backreferences, so a bad pattern cannot hang the program. | [RE2 syntax](https://github.com/google/re2/wiki/Syntax) |
 | regex (regular expression) | A text pattern, for example `[0-9]+` for any number. Filebeat's `replace` uses regexes to mask log lines. | [Wikipedia](https://en.wikipedia.org/wiki/Regular_expression) |
 | ring buffer | A fixed-size buffer in which new values overwrite the oldest ones. anomalyd keeps each series in one. | [Wikipedia](https://en.wikipedia.org/wiki/Circular_buffer) |
 | RSS (resident set size) | The memory that a process really holds in RAM. | [Wikipedia](https://en.wikipedia.org/wiki/Resident_set_size) |
 | sharding | Splitting the work into parts (shards), for example by service, with one Drain tree per shard. | [Wikipedia](https://en.wikipedia.org/wiki/Shard_%28database_architecture%29) |
 | SIGTERM | The Unix signal that asks a process to stop. anomalyd saves a snapshot when it gets one. | [Wikipedia](https://en.wikipedia.org/wiki/Signal_%28IPC%29#SIGTERM) |
+| single-flight | At most one run of a job at a time. A new request while one runs is skipped. anomalyd takes its snapshots this way. | — |
 | SSO (single sign-on) | One login for many apps. Vendors often sell it only in paid editions. | [Wikipedia](https://en.wikipedia.org/wiki/Single_sign-on) |
 | stateless | Keeping no memory between inputs. A stateless template key is the same on every host and after every restart. | — |
 | TLS (Transport Layer Security) | Encryption for network connections, as used by HTTPS. | [Wikipedia](https://en.wikipedia.org/wiki/Transport_Layer_Security) |
 | token bucket | A rate limit that allows short bursts up to a fixed size, then a steady rate. | [Wikipedia](https://en.wikipedia.org/wiki/Token_bucket) |
 | UI (user interface) | The screens that a person uses to work with a tool. | [Wikipedia](https://en.wikipedia.org/wiki/User_interface) |
+| UTF-8 | The standard encoding of text as bytes. Prometheus and Alertmanager reject label values that are not valid UTF-8. | [Wikipedia](https://en.wikipedia.org/wiki/UTF-8) |
 | UUID (universally unique identifier) | A random 128-bit id. | [Wikipedia](https://en.wikipedia.org/wiki/Universally_unique_identifier) |

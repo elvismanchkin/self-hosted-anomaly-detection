@@ -3,12 +3,17 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
+	"io"
 	"log/slog"
+	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/drain"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/series"
@@ -27,11 +32,17 @@ type stateFile struct {
 	Templates map[string][]clusterSnap
 	LogStart  int64
 	Findings  []findingSnap // firing findings, so a restart neither drops nor re-dates them
+	SigFired  []sigFiredSnap
 }
 
 type findingSnap struct {
 	Key     string
 	Finding Finding
+}
+
+type sigFiredSnap struct {
+	Service, Signature string
+	At                 time.Time
 }
 
 type clusterSnap struct {
@@ -44,21 +55,46 @@ type clusterSnap struct {
 
 func (s *Server) statePath() string { return filepath.Join(s.cfg.StateDir, "anomalyd.state") }
 
-// save writes a gob snapshot atomically (temp file + rename).
+// stateWriter wraps the snapshot file; tests use it to slow the write down.
+var stateWriter = func(w io.Writer) io.Writer { return w }
+
+// save writes a gob snapshot atomically (temp file + rename). It copies the state under the
+// server locks and encodes with none held, so a slow disk never stalls pushes or evaluation.
 func (s *Server) save() error {
 	t0 := time.Now()
-	st := stateFile{Version: stateVersion, SavedAt: t0, Step: s.step, PromCap: s.prom.Capacity(),
+	st := s.copyState(t0)
+	err := s.writeState(&st)
+	s.stats.snapNanos.Store(int64(time.Since(t0)))
+	if err != nil {
+		s.stats.snapFailures.Add(1)
+		return err
+	}
+	s.stats.snapLastOK.Store(time.Now().Unix())
+	slog.Info("state saved", "series", len(st.Prom)+len(st.Logs), "services", len(st.Templates),
+		"took", time.Since(t0).Round(time.Millisecond))
+	return nil
+}
+
+// copyState returns a snapshot that shares nothing mutable with the live server.
+func (s *Server) copyState(now time.Time) stateFile {
+	st := stateFile{Version: stateVersion, SavedAt: now, Step: s.step, PromCap: s.prom.Capacity(),
 		LogCap: s.logs.Capacity(), Prom: s.prom.Snapshot(), Logs: s.logs.Snapshot(),
 		Templates: map[string][]clusterSnap{}, LogStart: s.logStart.Load()}
 	s.findMu.Lock()
 	for k, f := range s.active {
-		st.Findings = append(st.Findings, findingSnap{Key: k, Finding: *f})
+		c := *f // evaluation rewrites the annotations of firing findings in place
+		c.Labels, c.Annotations = maps.Clone(f.Labels), maps.Clone(f.Annotations)
+		st.Findings = append(st.Findings, findingSnap{Key: k, Finding: c})
+	}
+	for k, at := range s.sigFired {
+		if now.Sub(at) < sigEvery {
+			st.SigFired = append(st.SigFired, sigFiredSnap{k.service, k.signature, at})
+		}
 	}
 	s.findMu.Unlock()
 	s.pool.Each(func(svc string, m *drain.Miner) {
 		m.Clusters(func(c *drain.Cluster) {
-			// Copy: pushes generalise c.Tokens in place under the miner lock, which the encoder
-			// below no longer holds.
+			// Copy: pushes generalise c.Tokens in place under the miner lock.
 			st.Templates[svc] = append(st.Templates[svc], clusterSnap{ID: c.ID, Tokens: slices.Clone(c.Tokens), Size: c.Size})
 		})
 	})
@@ -66,21 +102,23 @@ func (s *Server) save() error {
 	for svc, cs := range st.Templates {
 		for i := range cs {
 			if m := s.tmpl[tmplKey{svc, cs[i].ID}]; m != nil {
-				cs[i].Levels, cs[i].Created = m.levels, m.created
+				cs[i].Levels, cs[i].Created = maps.Clone(m.levels), m.created
 			}
 		}
 	}
+	s.tmplMu.Unlock()
+	return st
+}
+
+func (s *Server) writeState(st *stateFile) error {
 	if err := os.MkdirAll(s.cfg.StateDir, 0o755); err != nil {
-		s.tmplMu.Unlock()
 		return err
 	}
 	f, err := os.CreateTemp(s.cfg.StateDir, "anomalyd.state.*")
 	if err != nil {
-		s.tmplMu.Unlock()
 		return err
 	}
-	err = gob.NewEncoder(f).Encode(&st)
-	s.tmplMu.Unlock()
+	err = gob.NewEncoder(stateWriter(f)).Encode(st)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -91,12 +129,11 @@ func (s *Server) save() error {
 		os.Remove(f.Name())
 		return fmt.Errorf("write state: %w", err)
 	}
-	slog.Info("state saved", "series", len(st.Prom)+len(st.Logs), "services", len(st.Templates),
-		"took", time.Since(t0).Round(time.Millisecond))
 	return nil
 }
 
-// load restores a snapshot taken with the same step and ring sizes; templates always load.
+// load restores a snapshot; series need the same step and ring sizes (it warns when they
+// differ), templates always load.
 func (s *Server) load() error {
 	f, err := os.Open(s.statePath())
 	if os.IsNotExist(err) {
@@ -114,8 +151,17 @@ func (s *Server) load() error {
 		return fmt.Errorf("state version %d, want %d", st.Version, stateVersion)
 	}
 	nt := 0
-	for svc, cs := range st.Templates {
-		m, used := s.pool.Get(svc)
+	// _other last: it holds the services beyond --max-services, so in map order it could take
+	// the slot of a service that had its own miner.
+	svcs := slices.Sorted(maps.Keys(st.Templates))
+	if i := slices.Index(svcs, drain.OverflowKey); i >= 0 {
+		svcs = append(slices.Delete(svcs, i, i+1), drain.OverflowKey)
+	}
+	for _, svc := range svcs {
+		cs := st.Templates[svc]
+		// Older versions could save a service name that is not valid UTF-8 (it breaks every
+		// /metrics scrape); the cleaned name differs from svc, so it takes the fold path below.
+		m, used := s.pool.Get(cleanService(svc))
 		m.Lock()
 		s.tmplMu.Lock()
 		for i := len(cs) - 1; i >= 0; i-- { // oldest first so the LRU order survives
@@ -146,20 +192,58 @@ func (s *Server) load() error {
 			}
 			nt++
 		}
+		// Keyword levels and signatures are derived from the text, so they follow today's rules.
+		m.Clusters(func(c *drain.Cluster) {
+			if tm := s.tmpl[tmplKey{used, c.ID}]; tm != nil {
+				s.classifyLocked(tm, c.Template())
+			}
+		})
 		s.tmplMu.Unlock()
 		m.Unlock()
 	}
 	np, nl := 0, 0
-	if st.Step == s.step {
-		np = s.prom.Restore(st.Prom, s.promInfo)
-		nl = s.logs.Restore(st.Logs, s.logInfo)
-		// lastData is not in the snapshot; without it gc would drop every restored log series.
+	st.Logs = validSnaps(st.Logs) // their service label is a pool key: same rule as above
+	if st.Step != s.step {
+		slog.Warn("snapshot step differs; metric and log series not restored",
+			"old_step", time.Duration(st.Step)*time.Second, "new_step", s.cfg.Step,
+			"metric_series", len(st.Prom), "log_series", len(st.Logs))
+	} else {
+		if st.PromCap == s.prom.Capacity() {
+			np = s.prom.Restore(st.Prom, s.promInfo)
+		} else {
+			slog.Warn("snapshot metric ring size differs (--prom-season or --prom-seasons changed); metric series not restored",
+				"old_buckets", st.PromCap, "new_buckets", s.prom.Capacity(), "metric_series", len(st.Prom))
+		}
+		if st.LogCap == s.logs.Capacity() {
+			nl = s.logs.Restore(st.Logs, s.logInfo)
+		} else {
+			slog.Warn("snapshot log ring size differs (--log-season or --log-seasons changed); log series not restored",
+				"old_buckets", st.LogCap, "new_buckets", s.logs.Capacity(), "log_series", len(st.Logs))
+		}
+		// lastData is not in the snapshot; without it gc would drop every restored series. Metric
+		// heads follow the data clock, so look for the newest bucket with a value.
+		s.prom.ForEachShard(1, func(ss map[string]*series.Series) {
+			for _, sr := range ss {
+				if h := sr.Head(); h != math.MinInt64 {
+					b := h - 1
+					for b > h-int64(s.prom.Capacity()) && math.IsNaN(sr.At(b)) {
+						b--
+					}
+					sr.Info.(*seriesInfo).lastData = b
+				}
+			}
+		})
 		s.logs.ForEachShard(1, func(ss map[string]*series.Series) {
 			for _, sr := range ss {
 				sr.Info.(*seriesInfo).lastData = sr.Head()
 			}
 		})
 	}
+	s.findMu.Lock()
+	for _, sf := range st.SigFired {
+		s.sigFired[sigKey{sf.Service, sf.Signature}] = sf.At
+	}
+	s.findMu.Unlock()
 	nf := s.restoreFindings(st.Findings)
 	if st.LogStart > 0 {
 		// Templates are known already, so novelty needs no second warm-up.
@@ -170,8 +254,16 @@ func (s *Server) load() error {
 	return nil
 }
 
+// validSnaps drops series with a label value that is not valid UTF-8 (saved by older versions).
+func validSnaps(snaps []series.Snap) []series.Snap {
+	return slices.DeleteFunc(snaps, func(sn series.Snap) bool {
+		return slices.ContainsFunc(sn.Labels, func(l series.Label) bool { return !utf8.ValidString(l.Value) })
+	})
+}
+
 // restoreFindings re-activates firing findings whose series (or new template) was restored, so
-// they keep their start time and resolve through the normal path.
+// they keep their start time and resolve through the normal path. A signature finding needs no
+// series; it resolves by its start time.
 func (s *Server) restoreFindings(snaps []findingSnap) int {
 	s.findMu.Lock()
 	defer s.findMu.Unlock()
@@ -188,6 +280,20 @@ func (s *Server) restoreFindings(snaps []findingSnap) int {
 				m.novel, m.fired, ok = true, f.StartsAt, true // resolves after --novelty-ttl
 			}
 			s.tmplMu.Unlock()
+		case kindLogSignature:
+			sk := sigKey{f.Labels["service"], f.Labels["signature"]}
+			if f.StartsAt.After(s.sigFired[sk]) {
+				s.sigFired[sk] = f.StartsAt
+			}
+			ok = true
+		case kindMetricAbsent:
+			if s.cfg.AbsentBuckets > 0 { // otherwise nothing would resolve it
+				since := f.Bucket.Unix() / s.step
+				ok = s.prom.Lookup(strings.TrimPrefix(fs.Key, absentPrefix), func(sr *series.Series) {
+					info := sr.Info.(*seriesInfo)
+					info.absent, info.absentSince = absFiring, since
+				})
+			}
 		case kindMetric, kindLogTemplate, kindLogVolume:
 			st := s.logs
 			if f.Kind == kindMetric {

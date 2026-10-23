@@ -42,6 +42,7 @@ func TestFootprint(t *testing.T) {
 				for b := now - int64(s.prom.Capacity()) + 2; b <= now; b++ {
 					sr.Add(b, 100+10*math.Sin(float64(b+int64(i))/40))
 				}
+				sr.Info.(*seriesInfo).lastData = now // as remote write sets it; gc keeps the series
 			})
 	}
 	for i := 0; i < nLog; i++ {

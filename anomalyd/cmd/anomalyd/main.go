@@ -4,17 +4,22 @@
 //	anomalyd agent   per-host log tailer: Drain templates locally, pushes counts to the server
 //	anomalyd gen     synthetic logs / metrics / remote-write history for tests
 //	anomalyd bench   log-mining throughput on a file (no server)
+//	anomalyd version print the version
+//
+// Every subcommand takes --log-format=text|json and --log-level=debug|info|warn|error.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +30,9 @@ import (
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/gen"
 	"github.com/elvismanchkin/self-hosted-anomaly-detection/anomalyd/internal/server"
 )
+
+// version is set at build time: go build -ldflags "-X main.version=v0.2.0".
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -43,6 +51,8 @@ func main() {
 		err = runGen(ctx, os.Args[2:])
 	case "bench":
 		err = runBench(os.Args[2:])
+	case "version", "-version", "--version":
+		fmt.Println(versionString())
 	default:
 		usage()
 	}
@@ -53,8 +63,63 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: anomalyd server|agent|gen|bench [flags]   (-h for flags)")
+	fmt.Fprintln(os.Stderr, "usage: anomalyd server|agent|gen|bench|version [flags]   (-h for flags)")
 	os.Exit(2)
+}
+
+// buildInfo returns the version and the VCS revision; go build stamps the revision when it
+// runs in a git checkout.
+func buildInfo() (ver, rev string) {
+	ver, rev = version, "unknown"
+	if ver == "" { // -X main.version= with nothing, e.g. git describe outside a checkout
+		ver = "dev"
+	}
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ver, rev
+	}
+	if ver == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		ver = bi.Main.Version
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" {
+			rev = s.Value
+		}
+	}
+	return ver, rev
+}
+
+func versionString() string {
+	ver, rev := buildInfo()
+	return fmt.Sprintf("anomalyd %s (revision %s, %s %s/%s)", ver, rev, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+}
+
+// parseFlags adds the logging flags every subcommand takes, parses args and sets the default
+// logger.
+func parseFlags(fs *flag.FlagSet, args []string) error {
+	format := fs.String("log-format", "text", "log format: text or json")
+	level := fs.String("log-level", "info", "minimum log level: debug, info, warn or error")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	return setLogger(os.Stderr, *format, *level)
+}
+
+func setLogger(w io.Writer, format, level string) error {
+	var l slog.Level
+	if err := l.UnmarshalText([]byte(level)); err != nil {
+		return fmt.Errorf("--log-level: want debug, info, warn or error, got %q", level)
+	}
+	o := &slog.HandlerOptions{Level: l}
+	switch format {
+	case "text":
+		slog.SetDefault(slog.New(slog.NewTextHandler(w, o)))
+	case "json":
+		slog.SetDefault(slog.New(slog.NewJSONHandler(w, o)))
+	default:
+		return fmt.Errorf("--log-format: want text or json, got %q", format)
+	}
+	return nil
 }
 
 type listFlag []string
@@ -75,7 +140,7 @@ func runServer(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("server", flag.ExitOnError)
 	c := server.Config{}
 	var am, match listFlag
-	var ignore, floors string
+	var ignore, floors, sigFile string
 	fs.StringVar(&c.Listen, "listen", ":9400", "HTTP listen address")
 	fs.DurationVar(&c.Step, "step", 5*time.Minute, "bucket width for all series")
 	fs.DurationVar(&c.EvalInterval, "eval-interval", 30*time.Second, "how often complete buckets are scored")
@@ -92,6 +157,8 @@ func runServer(ctx context.Context, args []string) error {
 	fs.StringVar(&ignore, "ignore-labels", "prometheus,prometheus_replica", "labels dropped on ingest (Prometheus external labels)")
 	fs.StringVar(&c.BackfillURL, "backfill-url", "", "Prometheus URL to load history from at start-up")
 	fs.Var(&match, "backfill-match", "series selector to backfill (repeatable), e.g. '{__name__=~\"anomaly:.+\"}'")
+	fs.IntVar(&c.AbsentBuckets, "absent-buckets", 3, "missing buckets before a metric series is reported absent (0 = off)")
+	fs.DurationVar(&c.AbsentTTL, "absent-ttl", 24*time.Hour, "an absent-series finding resolves after this (0 = only when data returns)")
 	fs.IntVar(&c.MaxLogSeries, "max-log-series", 50000, "cap on log template + volume series")
 	fs.DurationVar(&c.LogSeason, "log-season", 24*time.Hour, "seasonality of log series")
 	fs.IntVar(&c.LogSeasons, "log-seasons", 3, "seasons of log history in the seasonal median")
@@ -100,7 +167,8 @@ func runServer(ctx context.Context, args []string) error {
 	fs.DurationVar(&c.NoveltyWarmup, "novelty-warmup", time.Hour, "no new-template findings until logs have flowed this long")
 	fs.Int64Var(&c.NoveltyMin, "novelty-min-lines", 5, "lines a new template needs before it is reported")
 	fs.DurationVar(&c.NoveltyWindow, "novelty-window", 15*time.Minute, "time a new template has to reach --novelty-min-lines")
-	fs.DurationVar(&c.NoveltyTTL, "novelty-ttl", time.Hour, "how long a new-template finding stays firing")
+	fs.DurationVar(&c.NoveltyTTL, "novelty-ttl", time.Hour, "how long a new-template or signature finding stays firing")
+	fs.StringVar(&sigFile, "signature-file", "", "known-bad log signatures: one 'name: RE2 regex' per line, matched against masked templates")
 	fs.IntVar(&c.MaxServices, "max-services", 1000, "services with their own template miner")
 	fs.StringVar(&c.MessageField, "message-field", "message", "JSON field with the log message (/api/v1/logs)")
 	fs.StringVar(&c.ServiceField, "service-field", "service.name", "JSON field with the service")
@@ -112,8 +180,11 @@ func runServer(ctx context.Context, args []string) error {
 	fs.StringVar(&c.StateDir, "state-dir", "", "directory for snapshots (templates, series)")
 	fs.DurationVar(&c.SnapshotEvery, "snapshot-interval", 5*time.Minute, "snapshot period")
 	c.Drain = *drainFlags(fs)
-	fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
 	c.AlertmanagerURLs, c.BackfillMatch, c.IgnoreLabels = am, match, strings.Split(ignore, ",")
+	c.Version, c.Revision = buildInfo()
 	for _, kv := range strings.Split(floors, ",") {
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			f, err := strconv.ParseFloat(v, 64)
@@ -121,6 +192,12 @@ func runServer(ctx context.Context, args []string) error {
 				return fmt.Errorf("--abs-floor %q: %w", kv, err)
 			}
 			server.AbsFloors[k] = f
+		}
+	}
+	if sigFile != "" {
+		var err error
+		if c.Signatures, err = server.LoadSignatures(sigFile); err != nil {
+			return fmt.Errorf("--signature-file %s: %w", sigFile, err)
 		}
 	}
 	s, err := server.New(c)
@@ -155,8 +232,11 @@ func runAgent(ctx context.Context, args []string) error {
 	fs.StringVar(&c.Listen, "listen", "", "address for the agent's own /metrics (empty = off)")
 	fs.BoolVar(&c.Once, "once", false, "read files to EOF, push once and exit")
 	c.Drain = *drainFlags(fs)
-	fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
 	c.Paths = paths
+	c.Version, c.Revision = buildInfo()
 	if len(c.Paths) == 0 {
 		return fmt.Errorf("at least one --path is required")
 	}
@@ -200,7 +280,9 @@ func runGen(ctx context.Context, args []string) error {
 		fs.StringVar(&o.Container, "container", "", "wrap lines as container stdout: cri or docker (json-file)")
 		fs.StringVar(&o.AppFormat, "app-format", "json", "what the app writes: json (ECS-style NDJSON) or text")
 		fs.Uint64Var(&o.Seed, "seed", 42, "random seed")
-		fs.Parse(args[1:])
+		if err := parseFlags(fs, args[1:]); err != nil {
+			return err
+		}
 		if o.Container == "auto" {
 			return fmt.Errorf("gen --container: cri or docker")
 		}
@@ -211,20 +293,26 @@ func runGen(ctx context.Context, args []string) error {
 	case "metrics":
 		addr := fs.String("listen", ":9500", "listen address")
 		inj := injFlags(fs)
-		fs.Parse(args[1:])
+		if err := parseFlags(fs, args[1:]); err != nil {
+			return err
+		}
 		return gen.ServeMetrics(ctx, *addr, inj())
 	case "history":
 		days := fs.Int("days", 8, "days of history")
 		step := fs.Duration("step", time.Minute, "sample step")
 		endAgo := fs.Duration("end-ago", 2*time.Minute, "history ends this long before now")
-		fs.Parse(args[1:])
+		if err := parseFlags(fs, args[1:]); err != nil {
+			return err
+		}
 		return gen.History(os.Stdout, time.Now().Add(-*endAgo).Truncate(*step), *days, *step)
 	case "rw":
 		url := fs.String("url", "http://localhost:9400/api/v1/write", "remote-write endpoint")
 		days := fs.Float64("days", 8, "days of history to send, ending now")
 		step := fs.Duration("step", time.Minute, "sample step")
 		inj := injFlags(fs)
-		fs.Parse(args[1:])
+		if err := parseFlags(fs, args[1:]); err != nil {
+			return err
+		}
 		to := time.Now().Truncate(*step)
 		t0 := time.Now()
 		n, err := gen.RemoteWrite(ctx, *url, to.Add(-time.Duration(*days*24)*time.Hour), to, *step, inj())
@@ -261,7 +349,9 @@ func runBench(args []string) error {
 	procs := fs.Int("procs", 1, "GOMAXPROCS for the run")
 	show := fs.Bool("templates", false, "print the mined templates")
 	dc := drainFlags(fs)
-	fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
 	if *file == "" {
 		return fmt.Errorf("--file is required")
 	}

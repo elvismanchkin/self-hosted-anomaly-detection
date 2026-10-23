@@ -3,7 +3,7 @@
 # symlinks into /var/log/pods (and into /var/lib/docker/containers on Docker-runtime nodes).
 # Filebeat keeps its single output; the agent sends only per-template counts to the anomalyd server.
 # The image is ../Dockerfile; registry.internal and the server URL are placeholders.
-# Validated with: kubeconform v0.8.0 -strict.
+# CI validates it with kubeconform v0.8.0 -strict (.github/workflows/ci.yml).
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

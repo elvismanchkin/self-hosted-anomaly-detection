@@ -1,0 +1,14 @@
+# Grafana file provisioning for the anomalyd dashboards (Grafana 11.x).
+# Put this file in /etc/grafana/provisioning/dashboards/ and the *.json files in options.path
+# below. The findings dashboard also needs the yesoreyeram-infinity-datasource plugin.
+apiVersion: 1
+providers:
+  - name: anomalyd
+    orgId: 1
+    folder: anomalyd
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false # edit the JSON in git, not in the UI
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards/anomalyd

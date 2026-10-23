@@ -26,10 +26,12 @@ import (
 )
 
 const (
-	kindMetric      = "metric"
-	kindLogTemplate = "log_template"
-	kindLogVolume   = "log_volume"
-	kindLogNew      = "log_new_template"
+	kindMetric       = "metric"
+	kindMetricAbsent = "metric_absent"
+	kindLogTemplate  = "log_template"
+	kindLogVolume    = "log_volume"
+	kindLogNew       = "log_new_template"
+	kindLogSignature = "log_signature"
 
 	nameTemplate = "anomalyd_log_template_lines"
 	nameVolume   = "anomalyd_log_lines"
@@ -50,7 +52,13 @@ type seriesInfo struct {
 	last     detect.Result
 	lastB    int64
 	lastOK   bool
-	lastData int64 // bucket of the last non-zero sample (log series)
+	lastData int64 // bucket of the last sample (non-zero for log series)
+
+	absent      uint8 // absNone, absFiring, absExpired (AnomalydSeriesAbsent)
+	written     bool  // remote write delivered it in this process (a backfill-only copy is never absent)
+	absentRun   int   // missing buckets in a row while other series had data
+	absentSince int64 // first bucket of that run
+	undefData   int64 // bucket of the last NaN or ±Inf sample that was not a staleness marker
 }
 
 // maxFuture is how far ahead of the server clock a sample or log count may be dated; later ones
@@ -113,6 +121,7 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var newest int64
+	marked := int64(-1)
 	maxTS := time.Now().Add(maxFuture).Unix()
 	err = promrw.Decode(b.raw, &b.ts, func(ts *promrw.TimeSeries) error {
 		b.key = b.key[:0]
@@ -133,15 +142,27 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 			return ls, series.Mean, s.promInfo(ls)
 		}
 		ok := s.prom.UpdateBytes(b.key, mk, func(sr *series.Series) {
+			info := sr.Info.(*seriesInfo)
 			for _, smp := range ts.Samples {
 				sec := smp.Timestamp / 1000
 				// NaN includes Prometheus staleness markers; ±Inf (e.g. x/0 in a ratio rule) would
 				// poison the baseline; future timestamps would move the data clock ahead.
 				if math.IsNaN(smp.Value) || math.IsInf(smp.Value, 0) || sec > maxTS {
+					// 0/0 or x/0 in a ratio rule: the series still arrives, so it is not absent.
+					// Only the staleness marker says that it went away.
+					if sec <= maxTS && math.Float64bits(smp.Value) != staleNaN {
+						info.undefData = max(info.undefData, sec/s.step)
+					}
 					continue
 				}
-				sr.Add(sec/s.step, smp.Value)
+				bk := sec / s.step
+				sr.Add(bk, smp.Value)
 				newest = max(newest, sec)
+				info.lastData, info.written = max(info.lastData, bk), true
+				if bk != marked && bk > 0 {
+					s.markSeen(bk)
+					marked = bk
+				}
 			}
 		})
 		if ok {
@@ -164,6 +185,23 @@ func (s *Server) handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// staleNaN is the value of Prometheus' staleness marker (prometheus/model/value.StaleNaN).
+const staleNaN = 0x7ff0000000000002
+
+// markSeen records that remote write delivered data for bucket b. A series missing from a bucket
+// that no series reached (Prometheus down or restarting) is not absent.
+func (s *Server) markSeen(b int64) {
+	p := &s.promSeen[b%int64(len(s.promSeen))]
+	for {
+		old := p.Load()
+		if old >= b || p.CompareAndSwap(old, b) {
+			return
+		}
+	}
+}
+
+func (s *Server) seen(b int64) bool { return b > 0 && s.promSeen[b%int64(len(s.promSeen))].Load() == b }
 
 func readAll(dst []byte, r io.Reader) ([]byte, error) {
 	for {
@@ -262,6 +300,7 @@ func (s *Server) queryRange(ctx context.Context, match string, from, to time.Tim
 		ls = series.Sorted(ls)
 		s.prom.Update(ls.Key(), func() (series.Labels, series.Agg, any) { return ls, series.Mean, s.promInfo(ls) },
 			func(sr *series.Series) {
+				info := sr.Info.(*seriesInfo)
 				for _, p := range r.Values {
 					ts, err1 := strconv.ParseFloat(string(p[0]), 64)
 					v, err2 := strconv.ParseFloat(strings.Trim(string(p[1]), `"`), 64)
@@ -269,6 +308,7 @@ func (s *Server) queryRange(ctx context.Context, match string, from, to time.Tim
 						continue
 					}
 					sr.Add(int64(ts)/s.step, v)
+					info.lastData = max(info.lastData, int64(ts)/s.step)
 					n++
 				}
 			})
@@ -279,7 +319,7 @@ func (s *Server) queryRange(ctx context.Context, match string, from, to time.Tim
 
 // --- Logs ----------------------------------------------------------------------------------
 
-// handlePush ingests template counts from agents.
+// handlePush ingests template counts from agents. A push without items is a heartbeat.
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	s.stats.logPushes.Add(1)
 	var body io.Reader = http.MaxBytesReader(w, r.Body, 64<<20)
@@ -299,10 +339,22 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Agent buckets must nest in server buckets, or counts land in the wrong ones.
+	if p.Step < 0 || (p.Step > 0 && s.step%p.Step != 0) {
+		s.stats.logPushErrors.Add(1)
+		s.stats.logPushBadStep.Add(1)
+		s.agents.reject(p.Agent, p.Step, time.Now())
+		http.Error(w, fmt.Sprintf("agent step %ds does not divide server step %ds", p.Step, s.step), http.StatusBadRequest)
+		return
+	}
 	now := time.Now()
 	maxTS := now.Add(maxFuture).Unix()
 	valid := func(c [2]int64) bool { return c[1] > 0 && c[0] <= maxTS }
-	s.markLogStart(now)
+	if len(p.Items) > 0 {
+		s.markLogStart(now)
+	}
+	var lines int64
+	svcs := map[string]struct{}{}
 	for _, it := range p.Items {
 		if it.Template == "" {
 			continue
@@ -320,7 +372,12 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 				s.addLog(svc, id, level, c[0], c[1])
 			}
 		}
+		if total > 0 {
+			lines += total
+			svcs[svc] = struct{}{}
+		}
 	}
+	s.agents.record(p.Agent, p.Step, lines, svcs, now)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -341,27 +398,47 @@ func (s *Server) globalTemplate(service, text string, n int64, now time.Time) (s
 	}
 	c, ch := m.Add(strings.Fields(text), n)
 	al[text] = c.ID
-	if ch == drain.Created {
-		s.newTemplateLocked(svc, c.ID, now)
-	}
+	s.templateChangedLocked(svc, c, ch, now)
 	return svc, c.ID
 }
 
-func (s *Server) newTemplateLocked(svc string, id int, now time.Time) {
-	start := s.logStart.Load()
-	s.tmpl[tmplKey{svc, id}] = &tmplMeta{levels: map[string]int64{}, created: now,
-		novel: start > 0 && now.Unix()-start >= int64(s.cfg.NoveltyWarmup/time.Second)}
+// templateChangedLocked creates the metadata of a new template, or re-derives it when the text
+// generalised. Callers hold the miner lock and tmplMu.
+func (s *Server) templateChangedLocked(svc string, c *drain.Cluster, ch drain.Change, now time.Time) {
+	k := tmplKey{svc, c.ID}
+	if ch == drain.Created {
+		s.created[svc]++
+		start := s.logStart.Load()
+		s.tmpl[k] = &tmplMeta{levels: map[string]int64{}, created: now,
+			novel: start > 0 && now.Unix()-start >= int64(s.cfg.NoveltyWarmup/time.Second)}
+	}
+	if m := s.tmpl[k]; m != nil && ch != drain.None {
+		s.classifyLocked(m, c.Template())
+	}
+}
+
+// classifyLocked derives the keyword level and the matching signatures from a template's text.
+func (s *Server) classifyLocked(m *tmplMeta, text string) {
+	m.inferred = logparse.InferLevel(text)
+	m.sigs = m.sigs[:0]
+	for i, sg := range s.cfg.Signatures {
+		if sg.Re.MatchString(text) {
+			m.sigs = append(m.sigs, i)
+		}
+	}
 }
 
 func (s *Server) markLogStart(now time.Time) { s.logStart.CompareAndSwap(0, now.Unix()) }
 
 func cleanService(svc string) string {
-	svc = strings.TrimSpace(svc)
+	// Invalid UTF-8 (raw bytes from /api/v1/logs, or a rune cut in half) would make Prometheus
+	// fail the whole /metrics scrape and Alertmanager reject the alert.
+	svc = strings.TrimSpace(strings.ToValidUTF8(svc, ""))
 	if svc == "" {
 		return "unknown"
 	}
 	if len(svc) > 128 {
-		svc = svc[:128]
+		svc = strings.ToValidUTF8(svc[:128], "") // a split rune would break the /metrics scrape
 	}
 	return svc
 }
@@ -376,6 +453,12 @@ func (s *Server) addLog(svc string, id int, level string, ts, n int64) {
 		m.levels[level] += n
 		if m.novel {
 			m.count += n
+		}
+		if len(m.sigs) > 0 {
+			m.sigLines += n
+			for _, i := range m.sigs {
+				s.sigMatches[i].Add(n)
+			}
 		}
 	}
 	s.tmplMu.Unlock()
@@ -424,9 +507,9 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		m, used := s.pool.Get(cleanService(svc))
 		m.Lock()
 		c, ch := m.AddLine(msg)
-		if ch == drain.Created {
+		if ch != drain.None {
 			s.tmplMu.Lock()
-			s.newTemplateLocked(used, c.ID, now)
+			s.templateChangedLocked(used, c, ch, now)
 			s.tmplMu.Unlock()
 		}
 		m.Unlock()
@@ -445,11 +528,13 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 // handleTemplates lists current templates, optionally for one service.
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
 	type row struct {
-		Service  string `json:"service"`
-		ID       int    `json:"template_id"`
-		Template string `json:"template"`
-		Lines    int64  `json:"lines"`
-		Level    string `json:"level"`
+		Service    string   `json:"service"`
+		ID         int      `json:"template_id"`
+		Template   string   `json:"template"`
+		Lines      int64    `json:"lines"`
+		Level      string   `json:"level"`
+		Inferred   string   `json:"inferred_level,omitempty"`
+		Signatures []string `json:"signatures,omitempty"`
 	}
 	want := r.URL.Query().Get("service")
 	out := []row{}
@@ -464,7 +549,10 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
 	s.tmplMu.Lock()
 	for i := range out {
 		if m := s.tmpl[tmplKey{out[i].Service, out[i].ID}]; m != nil {
-			out[i].Level = m.level()
+			out[i].Level, out[i].Inferred = m.level(), m.inferred
+			for _, k := range m.sigs {
+				out[i].Signatures = append(out[i].Signatures, s.cfg.Signatures[k].Name)
+			}
 		}
 	}
 	s.tmplMu.Unlock()

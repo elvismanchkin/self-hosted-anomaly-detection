@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -116,5 +117,37 @@ func TestFailedPushMergesIntoExistingBacklogKeys(t *testing.T) {
 	}
 	if len(a.counts) != 1 || total != 2 {
 		t.Fatalf("backlog = %d keys / %d lines, want 1 / 2", len(a.counts), total)
+	}
+}
+
+// With nothing to send, the agent still pushes: an empty push is its heartbeat.
+func TestEmptyPushIsHeartbeat(t *testing.T) {
+	fs := &fakeServer{}
+	srv := httptest.NewServer(fs)
+	defer srv.Close()
+	p := filepath.Join(t.TempDir(), "app.log")
+	if err := os.WriteFile(p, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(p)
+	cfg.Server, cfg.Name = srv.URL, "node-1"
+	if err := New(cfg).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.pushes) != 1 {
+		t.Fatalf("pushes = %d, want 1 heartbeat", len(fs.pushes))
+	}
+	if h := fs.pushes[0]; h.Agent != "node-1" || h.Step != 60 || len(h.Items) != 0 {
+		t.Fatalf("heartbeat = %+v", h)
+	}
+}
+
+func TestMetricsBuildInfo(t *testing.T) {
+	cfg := testConfig()
+	cfg.Version = "v1.2.3"
+	rec := httptest.NewRecorder()
+	New(cfg).handleMetrics(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if want := `anomalyd_agent_build_info{version="v1.2.3",revision="unknown",goversion="go`; !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("/metrics lacks %q:\n%s", want, rec.Body)
 	}
 }

@@ -24,6 +24,7 @@ Sections:
 [How detection works](#how-detection-works) ·
 [Resource model](#resource-model) ·
 [Wiring it into our stack](#wiring-it-into-our-stack) ·
+[Grafana dashboards](#grafana-dashboards) ·
 [Verification](#verification-2026-09-15) ·
 [Known limitations](#known-limitations)
 
@@ -59,7 +60,8 @@ The binary has two roles:
   - receives template counts from the agents.
   - scores every series against a seasonal-median + MAD baseline and detects new log templates.
   - sends findings to Alertmanager (API v2) with our `tier`/`severity` conventions.
-  - exposes scores and bands on `/metrics` for Grafana.
+  - exposes scores and bands on `/metrics` for Grafana, with dashboards in
+    [deploy/grafana/](deploy/grafana/).
   - serves findings as JSON on `/api/v1/findings`. This can be the bundle source for large
     language model (LLM) triage.
 
@@ -206,9 +208,54 @@ What this means for 200 GB–2 TB/day of logs:
     both directions count.
   - anomalyd ignores log series with fewer than `--log-min-count` lines in both observed and
     expected.
+  - A metric finding also resolves after 3 missing buckets. A series that stops arriving gets
+    its own alert, see **Absent series**.
 - **New templates.** The server may see a template for the first time after the
   `--novelty-warmup` period. That template becomes a finding once it has `--novelty-min-lines`
   lines within `--novelty-window`. The finding stays firing for `--novelty-ttl`.
+- **Severity from keywords.** Raw stdout often has no level word. So a Java
+  `OutOfMemoryError`, a Go `panic:` or a Python `Traceback` would count as info. The server
+  reads each template's fixed words for keywords, so such a template still gets `warning`:
+  - It applies when the template's dominant level is unknown or info. A real level (error,
+    warn, debug) always wins.
+  - `error` keywords: `panic`, `fatal`, `segfault`, `SIGSEGV`, `deadlock`, `OOM`,
+    `OOMKilled`, `Traceback`, `OutOfMemoryError`, `StackOverflowError`, "out of memory",
+    "segmentation fault", "core dumped", "nil pointer dereference", "no space left on device",
+    "too many open files", and the upper-case words `ERROR`, `CRITICAL`, `SEVERE`.
+  - `warn` keywords: class names that end in `Exception` or `Error` (`NullPointerException`,
+    `KeyError`), "connection refused", "connection reset", "broken pipe", and `WARN`,
+    `WARNING`.
+  - These do not count: a plain "error" ("no error", "errors=0", "error_count"), a key such as
+    `fatal=0`, "non-fatal", and words inside a path or URL (`/api/panic`). The full table is in
+    [internal/logparse/severity.go](internal/logparse/severity.go).
+  - The finding then carries the annotation `severity_source="template keywords"`. Its `level`
+    label stays the observed level.
+- **Known-bad signatures.** `--signature-file` lists templates that always deserve a look (see
+  [Wiring](#wiring-it-into-our-stack)). A template that matches one fires
+  `AnomalydLogSignature` on its first lines. It does not wait for `--novelty-min-lines` or the
+  warm-up. There is at most one finding per service and signature per 24 h, also across
+  restarts with `--state-dir`. It stays firing for `--novelty-ttl`.
+  `anomalyd_signature_matches_total{signature}` counts the matching lines.
+- **Absent series.** A metric series that stops arriving fires `AnomalydSeriesAbsent`:
+  - It fires after `--absent-buckets` (default 3, 0 = off) missing buckets in a row.
+  - Only buckets that other remote-write series reached count. So a Prometheus restart, when
+    no series arrives, is not an absence.
+  - The series must have come by remote write since anomalyd started. A backfilled copy that
+    remote write never sends is not absent. This happens, for example, when Prometheus adds an
+    external label that is not in `--ignore-labels`.
+  - It covers only series where both directions count, such as request rates. Errors or
+    latency going away is not a problem.
+  - The last expected value must be above the scale floor: `--abs-floor` for its
+    `anomaly_type`, or zero without one. So set, for example,
+    `--abs-floor errors=0.001,requests=0.1` to ignore near-idle series. The flag replaces the
+    default list, so keep `errors=0.001` in it.
+  - A series must arrive more often than every `--absent-buckets` × `--step`. A recording rule
+    that runs less often looks absent between its runs.
+  - A NaN or ±Inf sample, such as 0/0 in a ratio rule while a service has no traffic, counts as
+    arriving. Only a staleness marker, or no sample at all, counts as missing.
+  - It resolves when data returns, or `--absent-ttl` (default 24 h, 0 = only when data
+    returns) after the series stopped, for a service that was shut down on purpose. After that,
+    the series is dropped once a full ring has gone by without data.
 - **Merging templates across hosts.** Each agent sends its masked template text. The server
   re-clusters those texts with its own Drain instance per service. This gives one stable
   `template_id` per service across all hosts. Another host, or an agent after a restart, may
@@ -220,22 +267,34 @@ What this means for 200 GB–2 TB/day of logs:
   known and there is no second warm-up. Firing findings are saved too: they keep their start
   time at Alertmanager and resolve the normal way. Without that, Alertmanager would close them
   when the hold ran out, and they would fire again later with a new start time.
+  - A snapshot runs in the background. Agent pushes and evaluation do not wait for the disk.
+    If one is still running at the next interval, anomalyd skips that interval and logs a
+    warning. On SIGTERM it waits for the running snapshot, then saves once more.
+  - Ring buffers restore only with the same `--step` and ring size. After a change to `--step`,
+    `--*-season` or `--*-seasons`, anomalyd logs a warning with the old and new values. The
+    affected series start empty, and their firing findings are not restored. Templates always
+    restore.
+  - `/metrics` shows `anomalyd_snapshot_duration_seconds` (last snapshot),
+    `anomalyd_snapshot_failures_total` and `anomalyd_snapshot_last_success_timestamp_seconds`.
 
-anomalyd sends four alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
-drop.
+anomalyd sends six alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
+drop. For template alerts, the level comes from keywords when the lines carry none.
 
 | Alert (`alertname`) | `tier` | `severity` | Fires when |
 |---|---|---|---|
 | `AnomalydMetricAnomaly` | 2 | warning | a remote-written series leaves its seasonal band |
+| `AnomalydSeriesAbsent` | 2 | warning | a remote-written series (both directions count) stops arriving while others still arrive |
 | `AnomalydLogNewTemplate` | 1 | warning (error/warn level) or info | a template first seen after warm-up reaches the minimum lines |
+| `AnomalydLogSignature` | 1 | warning | a template that matches `--signature-file` gets lines |
 | `AnomalydLogTemplateRate` | 2 | warning (error/warn up) or info | one template's line rate leaves its band |
 | `AnomalydLogVolume` | 2 | warning (error/warn up, or info/unknown down) or info | a service's lines per level leave their band |
 
 Every alert carries:
 
-- `source="anomalyd"`, `anomaly_kind` and `direction`.
+- `source="anomalyd"` and `anomaly_kind`. All but `AnomalydLogNewTemplate` and
+  `AnomalydLogSignature` also carry `direction` (`down` for an absent series).
 - the series labels (`service`, `anomaly_name`, …), or `service`, `template_id` and `level`
-  for log findings.
+  for log findings. `AnomalydLogSignature` carries `service`, `template_id` and `signature`.
 - annotations with the observed and expected values, the band and the bucket time. Log findings
   also carry the masked template.
 
@@ -282,9 +341,36 @@ remote_write:
         action: keep
 ```
 
+Send series that are summed per service. A series with a pod or instance label disappears each
+time the pod is replaced, and then `AnomalydSeriesAbsent` fires. If you cannot avoid such
+labels, turn absence off with `--absent-buckets 0`.
+
 **Server:**
 ```bash
 anomalyd server --listen :9400 --state-dir /var/lib/anomalyd --backfill-url http://prometheus.internal:9090 --backfill-match '{__name__=~"anomaly:svc:.+"}' --alertmanager-url http://alertmanager.internal:9093 --external-url http://anomalyd.internal:9400
+```
+
+**Logs and version.** Every subcommand takes `--log-format=text|json` (default `text`) and
+`--log-level=debug|info|warn|error` (default `info`). `anomalyd version` prints the version, the
+git revision and the Go version.
+
+**Signature file** (`--signature-file`). It lists known-bad templates, one `name: regex` per
+line. Lines that start with `#` and blank lines are skipped.
+
+- The regex is [RE2](https://github.com/google/re2/wiki/Syntax), as in Go.
+- It is matched against the masked template text, not the raw line. So numbers read `<NUM>`,
+  addresses `<IP>`, and words that Drain generalised read `<*>`. Write `<NUM>`, not `\d+`.
+- The name becomes the `signature` label. It may use letters, digits, `_`, `.` and `-`.
+- A bad line stops the server at start-up with an error that names the line.
+- The server reads the file once, at start-up. Restart it after a change.
+- `GET /api/v1/templates` shows which signatures each template matches.
+
+```text
+# name: regex
+db-pool-exhausted: db pool exhausted: timeout .* after <NUM>
+jvm-oom: (?i)OutOfMemoryError|out of memory
+disk-full: No space left on device
+tls-expired: x509: certificate has expired
 ```
 
 **Agent.** Run it on every node that Filebeat reads from. For container stdout, run it as a
@@ -319,6 +405,17 @@ anomalyd agent --path '/var/log/containers/*.log' --container auto --service-fro
     finishes the old one, then follows the new one.
   - The agent closes a file whose path has been gone for 10 s (pod deleted). So its disk space
     is freed.
+- **Heartbeat.** The agent pushes every `--flush-interval`, also when it has no counts. That
+  empty push is a heartbeat: the server sees the agent alive, but does not take it as log data.
+  Upgrade the server before the agents. A server from before heartbeats takes the first empty
+  push as the start of log data, so a quiet agent ends `--novelty-warmup` early and the first
+  templates after it fire `AnomalydLogNewTemplate`. An agent from before heartbeats updates
+  `anomalyd_agent_last_push_timestamp_seconds` only when it has lines, so an idle one looks
+  stale.
+- **Step.** The server's `--step` must be a multiple of the agent's `--step`. Otherwise the
+  counts would land in the wrong buckets. The server refuses such a push with HTTP 400 and
+  counts it in `anomalyd_log_push_rejected_total{reason="step"}`. The agent logs the server's
+  message and keeps the counts, up to `--max-backlog`.
 - **Plain log files** work too: `--path '/var/log/app/*/*.log' --service-from-path '/var/log/app/(?P<service>[^/]+)/'`
   without `--container`.
 
@@ -334,15 +431,17 @@ inhibit_rules:
 ```
 
 **Container image.** Build a static binary, then use the distroless [Dockerfile](Dockerfile).
-A distroless image has no shell and no package manager:
+A distroless image has no shell and no package manager. `-X main.version` sets the version;
+`go build` adds the git revision by itself when it runs in a git checkout:
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o anomalyd ./cmd/anomalyd && docker build -t anomalyd .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(git describe --tags --always)" -o anomalyd ./cmd/anomalyd && docker build -t anomalyd .
 ```
 
-**Grafana** can plot `anomalyd_score` together with `anomalyd_expected` and
-`anomalyd_band_upper`/`anomalyd_band_lower`. The server strips `anomaly_*` labels from these
-gauges. Otherwise the upstream promql-anomaly-detection rules would pick them up as inputs and
-fail with "same labelset".
+**Grafana** dashboards ship in [deploy/grafana/](deploy/grafana/), see
+[Grafana dashboards](#grafana-dashboards). They plot `anomalyd_score` together with
+`anomalyd_expected` and `anomalyd_band_upper`/`anomalyd_band_lower`. The server strips
+`anomaly_*` labels from these gauges. Otherwise the upstream promql-anomaly-detection rules
+would pick them up as inputs and fail with "same labelset".
 
 The server has these HTTP endpoints:
 
@@ -352,8 +451,74 @@ The server has these HTTP endpoints:
 | `POST /api/v1/templates` | agent pushes (gzip JSON, [wire format](internal/wire/wire.go)) |
 | `POST /api/v1/logs?service=` | raw newline-delimited JSON (NDJSON) or text lines, for small set-ups without agents |
 | `GET /api/v1/findings[?state=firing&id=]` | active and recently resolved findings |
-| `GET /api/v1/templates[?service=]` | current templates per service with line counts and dominant level |
+| `GET /api/v1/templates[?service=]` | current templates per service with line counts, dominant level, keyword level (`inferred_level`) and matching `signatures` |
+| `GET /api/v1/agents` | agents that pushed in the last 24 hours: last push, step, pushes, rejected pushes, lines, services with lines in the last hour |
 | `GET /metrics`, `GET /-/healthy` | scores and bands, self-metrics, liveness |
+
+Self-metrics on `/metrics` include these:
+
+- `anomalyd_build_info{version,revision,goversion}` is always 1. The agent's own `/metrics`
+  (`--listen`) has `anomalyd_agent_build_info`.
+- `anomalyd_agent_last_push_timestamp_seconds{agent}` and `anomalyd_agent_lines_total{agent}`
+  come from the agents' pushes. The timestamp is the last accepted push, heartbeats included.
+  If it is older than a few `--flush-interval`, the agent is down, cannot reach the server, or
+  pushes with a wrong step. The server forgets an agent that sent nothing for 24 hours, so a
+  removed node leaves `/metrics`. It keeps up to 10,000 agents. The rest share
+  `agent="_other"`. The agent's own `anomalyd_agent_lines_total` has no `agent` label. When
+  Prometheus scrapes both, select by `job`.
+- `anomalyd_log_push_rejected_total{reason="step"}` counts pushes refused for their step. They
+  are also in `anomalyd_log_push_errors_total`.
+- `anomalyd_findings_active{kind}` counts firing findings per kind: `metric`, `metric_absent`,
+  `log_template`, `log_volume`, `log_new_template` and `log_signature`.
+- `anomalyd_templates_created_total{service}` and `anomalyd_templates_evicted_total{service}`
+  show template churn. Steady evictions mean that `--drain-max-templates` is too small for the
+  service, or that its lines carry variables that the masks miss.
+
+## Grafana dashboards
+
+[deploy/grafana/](deploy/grafana/) holds four dashboards for Grafana 11.x (`schemaVersion` 39)
+and a file-provisioning example. Each dashboard has a data source variable, so no data source
+UID is hard-coded.
+
+| File | What it shows |
+|---|---|
+| `anomalyd-service.json` | One service. Each metric input (the recording rule) against `anomalyd_expected`, with the band filled between `anomalyd_band_lower` and `anomalyd_band_upper`. `abs(anomalyd_score)` with the threshold line. Log lines per bucket by level. Buckets over the threshold are marked as annotations. |
+| `anomalyd-overview.json` | All services. `topk(20, abs(anomalyd_score))` as a table and over time, `anomalyd_findings_active` by kind, and a service × time heatmap (status-history panel) of the anomaly rate. |
+| `anomalyd-health.json` | anomalyd itself: evaluation duration, series held, dropped and rejected input, remote-write lag, agent line and push rates, templates per service, memory. |
+| `anomalyd-findings.json` | Optional. The findings from `GET /api/v1/findings` as tables. |
+
+To provision them:
+
+1. Copy the JSON files to `/var/lib/grafana/dashboards/anomalyd`.
+2. Copy [dashboards.yaml](deploy/grafana/dashboards.yaml) to
+   `/etc/grafana/provisioning/dashboards/`.
+3. Restart Grafana. The dashboards appear in the `anomalyd` folder.
+
+With the Grafana Helm chart sidecar, put only the JSON files in a ConfigMap labelled
+`grafana_dashboard: "1"` instead.
+
+Notes:
+
+- **Threshold.** Set the `--threshold` variable to the server's `--threshold` (default 4). It
+  draws the threshold line. It also rebuilds the observed log count, which anomalyd does not
+  export: observed = expected + score × (upper − expected) / threshold.
+- **Flags.** The bands and the log panels need `--export-bands` (on by default). The template
+  panel needs `--export-template-scores` (off by default).
+- **Observed metric.** It is the recording rule itself. So the Prometheus data source must be
+  the one that records it. Each band panel expects one series per service and rule, which
+  `sum by (service)` gives.
+- **Raw scores.** The overview and the anomaly rate show scores before `--for`, direction and
+  `--log-min-count`. So they show more than the findings do. The anomaly rate is the share of
+  a service's series with |score| at or above a variable (default 2).
+- **Findings dashboard.** It needs the
+  [Infinity](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/) plugin
+  (`yesoreyeram-infinity-datasource`) and an Infinity data source. Pick an Infinity release
+  that your Grafana supports: 4.x needs 11.6.11 or later, 3.11 needs 11.6, and 3.7.1 runs on
+  10.4.8 and later. Set the `anomalyd URL` variable to an address of the server that the
+  Grafana backend can reach. anomalyd needs no Grafana token.
+- **Newer self-metrics.** A collapsed row on the health dashboard plots `anomalyd_snapshot_*`,
+  `anomalyd_agent_last_push_timestamp_seconds` and `anomalyd_templates_created_total`. These
+  metrics are newer than the rest. A server without them shows "No data" in that row.
 
 ## Verification (2026-09-15)
 
@@ -368,7 +533,9 @@ All checks used synthetic data. Nothing touched our production systems.
 | Benchmarks | `go test -bench . ./internal/...` | Drain add 279 ns/line, tokenize 361 ns, extract 226 ns, score 110 µs full / 9 µs cached |
 | Footprint | `ANOMALYD_FOOTPRINT=1 go test ./internal/server -run Footprint -v` | 291 MB heap. Eval 841 ms cold / ~1 ms warm on one core. |
 | End to end | [test/e2e/run.sh](test/e2e/run.sh) (Docker, ~14 min) | PASS, see below |
-| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid |
+| Agent DaemonSet | `kubeconform -strict` v0.8.0 on [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml) | Valid. CI runs it on `deploy/*.yaml`. |
+| Fuzzing (2026-10-23) | `go test -run='^$' -fuzz=<target> -fuzztime=60s` for `FuzzDecode` (promrw), `FuzzHandlePush` (server), `FuzzTokenize` (drain) | No panic. `FuzzHandlePush` also checks that service names stay valid UTF-8: the 128-byte cut could split a rune. Fixed, with that input as a seed in `internal/server/testdata/fuzz`. CI fuzzes each target for 20 s. |
+| Grafana dashboards (2026-10-23) | Grafana 11.6.0 with [dashboards.yaml](deploy/grafana/dashboards.yaml), Prometheus v3.14.0 and Infinity 3.11.1, over a local server, agent and generators with an injected error burst. Every panel query through Grafana's `/api/ds/query`, and the panels rendered to images. | All four dashboards load. Every query returns data, except the newer self-metrics row. The band fill, threshold lines, annotations and heatmap render as intended. |
 | Routing through the repo's Alertmanager config | `amtool config routes test` against [../poc/prometheus/alertmanager.yml](../poc/prometheus/alertmanager.yml) (v0.34.0) | All three finding kinds → `llm-triage` + `chat-anomalies` (note 3) |
 | One-core comparison with the OTel `drain` processor | [test/bench/compare.sh](test/bench/compare.sh), plain and `CONTAINER=cri` | See [Why build this](#why-build-this-instead-of-using-the-python-pieces) |
 
@@ -381,7 +548,10 @@ Notes:
    - a deleted file that gets closed, and a new file at the same path that is read from the
      start
    - findings → Alertmanager payload, novelty and snapshot restore
+   - keyword severity, signature findings and absent series, each across a restart
    - the raw-log endpoint
+   - fuzz targets for the remote-write decoder, agent pushes (plain and gzip) and the
+     tokenizer
 2. We also wrapped the same lines with `gen logs --container …`. Results:
    - CRI: 1.48–1.60 M lines/s
    - Docker json-file: 0.54–0.59 M lines/s, because of the second JSON decode
@@ -434,8 +604,9 @@ We did not verify:
 - **Drain merges look-alike lines**, the same as Drain3. For example, `Cache hit`/`Cache miss`
   share one template. Tune `--drain-sim-th`/`--drain-depth` per log family, or add masks.
 - **First-seen templates can carry unmasked words**, such as a user name without digits. They
-  keep them until Drain generalises them. Review masks before you route template text to chat
-  or an LLM.
+  keep them until Drain generalises them. The masker also replaces only the first e-mail address
+  in a token, so `to=a@x.com,b@y.com` keeps `b@y.com`. Review masks before you route template
+  text to chat or an LLM.
 - **Agents push at least once**. So a retry after a timeout can double-count one push. The
   agent does not save its file offsets. So it misses the lines written while it is down.
 - **Counts are dated when the agent reads the line**, not by the timestamp in the line. A
@@ -451,6 +622,27 @@ We did not verify:
 - **Seasonality needs history**. Weekly bands need 2 weeks for a full residual window. The
   backfill covers metrics. Log series start in cold-start mode (recent median) until a day of
   counts exists.
+- **Keywords only see fixed words**. When Drain turns a keyword into `<*>` (`Caught <*>` from
+  two exception names), the template loses its keyword level. Signatures see the same text. The
+  stream does not count either: the agent does not tell the server that a line came from
+  stderr, so stderr alone does not raise the severity.
+- **Absence needs a scored series**. A series is reported absent only if remote write sent it,
+  and it was scored, in this process. So a series that stops while anomalyd is down is not
+  reported after the restart. A renamed series (a label changed) looks absent until
+  `--absent-ttl`.
+- **Absence is for metric series only**. A log template that stops, such as a batch job's last
+  line, fires only a template-rate drop, and only if it has enough lines (`--log-min-count`).
+- **Absence trusts the data clock**. A bucket counts as missing once any other series reached
+  it. With several Prometheus servers writing to one anomalyd, one that stops makes all its
+  series absent. While Prometheus sends a backlog, its remote-write shards can be minutes
+  apart, and a series that is only late can look absent for a moment.
+- **A stopped agent is not named on findings**. A volume-down finding does not say that the
+  agent that carried the service's lines stopped. Check
+  `anomalyd_agent_last_push_timestamp_seconds` or `/api/v1/agents`. The server does not save its
+  agent list: after a restart an agent appears again only when it pushes. So an agent that died
+  while the server was down is missing, not stale.
+- **Snapshots keep firing findings only**. After a restart, `/api/v1/findings` has no resolved
+  findings until new ones resolve.
 - **One season per source**, set by `--prom-season` and `--log-season`. Holidays and multiple
   seasons at once are out of scope for the PoC. Multiple seasons need a method such as
   [MSTL](https://arxiv.org/abs/2107.13462) (seasonal-trend decomposition for multiple seasonal

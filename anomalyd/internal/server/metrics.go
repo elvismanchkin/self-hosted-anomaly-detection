@@ -67,15 +67,22 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
+	kinds := []string{kindMetric, kindMetricAbsent, kindLogTemplate, kindLogVolume, kindLogNew, kindLogSignature}
+	byKind := map[string]int{}
 	s.findMu.Lock()
-	byKind := map[string]int{kindMetric: 0, kindLogTemplate: 0, kindLogVolume: 0, kindLogNew: 0}
 	for _, f := range s.active {
 		byKind[f.Kind]++
 	}
 	s.findMu.Unlock()
 	e.Family("anomalyd_findings_active", "Findings currently firing.", "gauge")
-	for _, k := range []string{kindMetric, kindLogTemplate, kindLogVolume, kindLogNew} {
+	for _, k := range kinds {
 		e.Sample("anomalyd_findings_active", [][2]string{{"kind", k}}, float64(byKind[k]))
+	}
+	if len(s.cfg.Signatures) > 0 {
+		e.Family("anomalyd_signature_matches_total", "Log lines whose template matches a --signature-file entry.", "counter")
+		for i, sg := range s.cfg.Signatures {
+			e.Sample("anomalyd_signature_matches_total", [][2]string{{"signature", sg.Name}}, float64(s.sigMatches[i].Load()))
+		}
 	}
 	e.Family("anomalyd_series", "Series held in memory.", "gauge")
 	e.Sample("anomalyd_series", [][2]string{{"source", "remote_write"}}, float64(s.prom.Len()))
@@ -96,19 +103,38 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	counter("anomalyd_log_lines_total", "Log lines counted (agents and /api/v1/logs).", s.stats.logLines.Load())
 	counter("anomalyd_log_pushes_total", "Agent pushes received.", s.stats.logPushes.Load())
 	counter("anomalyd_log_push_errors_total", "Agent pushes rejected.", s.stats.logPushErrors.Load())
+	e.Family("anomalyd_log_push_rejected_total", "Agent pushes rejected, by reason (also in anomalyd_log_push_errors_total).", "counter")
+	e.Sample("anomalyd_log_push_rejected_total", [][2]string{{"reason", "step"}}, float64(s.stats.logPushBadStep.Load()))
 	counter("anomalyd_alerts_sent_total", "Alerts posted to Alertmanager (per receiver).", s.stats.alertsSent.Load())
 	counter("anomalyd_alert_errors_total", "Failed Alertmanager posts.", s.stats.alertErrors.Load())
+	counter("anomalyd_snapshot_failures_total", "State snapshots that failed to save.", s.stats.snapFailures.Load())
 
-	e.Family("anomalyd_templates", "Log templates held per service.", "gauge")
+	s.agents.write(e)
+
 	type tc struct {
-		svc string
-		n   int
+		svc              string
+		n                int
+		evicted, created int64
 	}
 	var tcs []tc
-	s.pool.Each(func(svc string, m *drain.Miner) { tcs = append(tcs, tc{svc, m.Len()}) })
+	s.pool.Each(func(svc string, m *drain.Miner) { tcs = append(tcs, tc{svc: svc, n: m.Len(), evicted: m.Evicted()}) })
+	s.tmplMu.Lock()
+	for i := range tcs {
+		tcs[i].created = s.created[tcs[i].svc]
+	}
+	s.tmplMu.Unlock()
 	sort.Slice(tcs, func(i, j int) bool { return tcs[i].svc < tcs[j].svc })
+	e.Family("anomalyd_templates", "Log templates held per service.", "gauge")
 	for _, t := range tcs {
 		e.Sample("anomalyd_templates", [][2]string{{"service", t.svc}}, float64(t.n))
+	}
+	e.Family("anomalyd_templates_created_total", "Log templates created per service.", "counter")
+	for _, t := range tcs {
+		e.Sample("anomalyd_templates_created_total", [][2]string{{"service", t.svc}}, float64(t.created))
+	}
+	e.Family("anomalyd_templates_evicted_total", "Log templates dropped by the per-service LRU (--drain-max-templates).", "counter")
+	for _, t := range tcs {
+		e.Sample("anomalyd_templates_evicted_total", [][2]string{{"service", t.svc}}, float64(t.evicted))
 	}
 	e.Family("anomalyd_eval_duration_seconds", "Duration of the last evaluation.", "gauge")
 	e.Sample("anomalyd_eval_duration_seconds", nil, time.Duration(s.stats.evalNanos.Load()).Seconds())
@@ -116,6 +142,11 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	e.Sample("anomalyd_eval_scored_buckets", nil, float64(s.stats.evalSeries.Load()))
 	e.Family("anomalyd_remote_write_newest_sample_timestamp_seconds", "Newest remote-write sample.", "gauge")
 	e.Sample("anomalyd_remote_write_newest_sample_timestamp_seconds", nil, float64(s.promClock.Load()))
+	e.Family("anomalyd_snapshot_duration_seconds", "Duration of the last state snapshot.", "gauge")
+	e.Sample("anomalyd_snapshot_duration_seconds", nil, time.Duration(s.stats.snapNanos.Load()).Seconds())
+	e.Family("anomalyd_snapshot_last_success_timestamp_seconds", "Time of the last saved state snapshot (0 = none yet).", "gauge")
+	e.Sample("anomalyd_snapshot_last_success_timestamp_seconds", nil, float64(s.stats.snapLastOK.Load()))
+	e.BuildInfo("anomalyd_build_info", s.cfg.Version, s.cfg.Revision)
 	writeRuntime(e, s.started)
 	_ = e.Flush()
 }

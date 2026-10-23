@@ -38,6 +38,8 @@ type Config struct {
 	IgnoreLabels  []string // dropped on ingest, e.g. external labels added by Prometheus
 	BackfillURL   string
 	BackfillMatch []string
+	AbsentBuckets int           // missing buckets before AnomalydSeriesAbsent; 0 = off
+	AbsentTTL     time.Duration // an absent finding resolves after this; 0 = only when data returns
 
 	// Log template counts (from agents or /api/v1/logs).
 	MaxLogSeries   int
@@ -56,11 +58,14 @@ type Config struct {
 	LevelField     string
 	ExportTemplate bool // export anomalyd_score for every log-template series
 	ExportBands    bool
+	Signatures     []Signature // known-bad templates (--signature-file)
 
 	AlertmanagerURLs []string
 	ExternalURL      string
 	StateDir         string
 	SnapshotEvery    time.Duration
+
+	Version, Revision string // reported by anomalyd_build_info
 }
 
 type Server struct {
@@ -71,29 +76,38 @@ type Server struct {
 	logP       detect.Params
 	pool       *drain.Pool
 	ignore     map[string]bool
-	promClock  atomic.Int64 // newest remote-write sample, unix seconds
-	logStart   atomic.Int64 // first log data, unix seconds (0 = none yet)
+	promClock  atomic.Int64   // newest remote-write sample, unix seconds
+	promSeen   []atomic.Int64 // recent buckets that got remote-write data, at b % len
+	absentTTL  int64          // buckets
+	logStart   atomic.Int64   // first log data, unix seconds (0 = none yet)
 	started    time.Time
 	client     *http.Client
 
 	tmplMu  sync.Mutex
 	tmpl    map[tmplKey]*tmplMeta
 	aliases map[string]map[string]int // service -> agent template text -> global template id
+	created map[string]int64          // service -> templates created since start-up
+
+	agents agentRegistry
 
 	findMu   sync.Mutex
 	active   map[string]*Finding
-	resolved []*Finding // newest first, capped
-	gcRuns   int        // evaluation goroutine only
+	resolved []*Finding           // newest first, capped
+	sigFired map[sigKey]time.Time // last AnomalydLogSignature per service and signature
+	gcRuns   int                  // evaluation goroutine only
 
-	stats stats
+	stats      stats
+	sigMatches []atomic.Int64 // lines per signature
 }
 
 type stats struct {
 	rwRequests, rwErrors, rwSamples, rwDropped atomic.Int64
 	logLines, logPushes, logPushErrors         atomic.Int64
+	logPushBadStep                             atomic.Int64
 	alertsSent, alertErrors                    atomic.Int64
 	evalNanos, evalSeries                      atomic.Int64
 	backfilled                                 atomic.Int64
+	snapNanos, snapFailures, snapLastOK        atomic.Int64 // last save duration, failed saves, unix time of last good one
 }
 
 type tmplKey struct {
@@ -101,12 +115,17 @@ type tmplKey struct {
 	id      int
 }
 
+type sigKey struct{ service, signature string }
+
 type tmplMeta struct {
-	levels  map[string]int64
-	created time.Time
-	novel   bool  // created after warm-up: novelty candidate
-	count   int64 // lines since creation (for novelty)
-	fired   time.Time
+	levels   map[string]int64
+	created  time.Time
+	novel    bool  // created after warm-up: novelty candidate
+	count    int64 // lines since creation (for novelty)
+	fired    time.Time
+	inferred string // level from template keywords; derived from the text, not saved
+	sigs     []int  // indices of matching cfg.Signatures; derived, not saved
+	sigLines int64  // lines for sigs since the last evaluation
 }
 
 func (m *tmplMeta) level() string {
@@ -127,7 +146,11 @@ func New(cfg Config) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, step: int64(cfg.Step / time.Second), started: time.Now(),
 		client: &http.Client{Timeout: 10 * time.Second}, ignore: map[string]bool{},
-		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, active: map[string]*Finding{}}
+		tmpl: map[tmplKey]*tmplMeta{}, aliases: map[string]map[string]int{}, created: map[string]int64{},
+		active: map[string]*Finding{}, agents: agentRegistry{agents: map[string]*agentInfo{}},
+		sigFired: map[sigKey]time.Time{}, sigMatches: make([]atomic.Int64, len(cfg.Signatures)),
+		promSeen: make([]atomic.Int64, buckets(cfg.Grace, cfg.Step)+maxCatchUp+64)}
+	s.absentTTL = int64(buckets(cfg.AbsentTTL, cfg.Step))
 	for _, l := range cfg.IgnoreLabels {
 		if l = strings.TrimSpace(l); l != "" {
 			s.ignore[l] = true
@@ -160,7 +183,7 @@ func (s *Server) Run(ctx context.Context) error {
 		ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 5 * time.Minute}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("anomalyd server listening", "addr", s.cfg.Listen, "step", s.cfg.Step,
+	slog.Info("anomalyd server listening", "addr", s.cfg.Listen, "version", s.cfg.Version, "step", s.cfg.Step,
 		"prom_ring_buckets", s.prom.Capacity(), "log_ring_buckets", s.logs.Capacity())
 
 	tick := time.NewTicker(s.cfg.EvalInterval)
@@ -171,6 +194,7 @@ func (s *Server) Run(ctx context.Context) error {
 		defer t.Stop()
 		snap = t.C
 	}
+	saving := make(chan struct{}, 1) // held by the one background snapshot
 	for {
 		select {
 		case <-ctx.Done():
@@ -178,6 +202,7 @@ func (s *Server) Run(ctx context.Context) error {
 			defer cancel()
 			_ = srv.Shutdown(shut)
 			if s.cfg.StateDir != "" {
+				saving <- struct{}{} // wait for a running snapshot
 				if err := s.save(); err != nil {
 					slog.Error("final snapshot failed", "err", err)
 				}
@@ -188,8 +213,16 @@ func (s *Server) Run(ctx context.Context) error {
 		case now := <-tick.C:
 			s.Evaluate(now)
 		case <-snap:
-			if err := s.save(); err != nil {
-				slog.Error("snapshot failed", "err", err)
+			select {
+			case saving <- struct{}{}:
+				go func() {
+					defer func() { <-saving }()
+					if err := s.save(); err != nil {
+						slog.Error("snapshot failed", "err", err)
+					}
+				}()
+			default:
+				slog.Warn("previous snapshot still running; skipping this one", "interval", s.cfg.SnapshotEvery)
 			}
 		}
 	}
@@ -202,6 +235,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/templates", s.handleTemplates)
 	mux.HandleFunc("POST /api/v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /api/v1/findings", s.handleFindings)
+	mux.HandleFunc("GET /api/v1/agents", s.handleAgents)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /-/healthy", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("OK\n")) })
 	return mux
