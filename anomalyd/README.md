@@ -284,6 +284,10 @@ remote_write:
 anomalyd server --listen :9400 --state-dir /var/lib/anomalyd --backfill-url http://prometheus.internal:9090 --backfill-match '{__name__=~"anomaly:svc:.+"}' --alertmanager-url http://alertmanager.internal:9093 --external-url http://anomalyd.internal:9400
 ```
 
+**Logs and version.** Every subcommand takes `--log-format=text|json` (default `text`) and
+`--log-level=debug|info|warn|error` (default `info`). `anomalyd version` prints the version, the
+git revision and the Go version.
+
 **Agent.** Run it on every node that Filebeat reads from. For container stdout, run it as a
 DaemonSet (one pod on each node) with Filebeat's read-only mounts. The manifest is
 [deploy/agent-daemonset.yaml](deploy/agent-daemonset.yaml), and `kubeconform -strict` finds it
@@ -316,6 +320,12 @@ anomalyd agent --path '/var/log/containers/*.log' --container auto --service-fro
     finishes the old one, then follows the new one.
   - The agent closes a file whose path has been gone for 10 s (pod deleted). So its disk space
     is freed.
+- **Heartbeat.** The agent pushes every `--flush-interval`, also when it has no counts. That
+  empty push is a heartbeat: the server sees the agent alive, but does not take it as log data.
+- **Step.** The server's `--step` must be a multiple of the agent's `--step`. Otherwise the
+  counts would land in the wrong buckets. The server refuses such a push with HTTP 400 and
+  counts it in `anomalyd_log_push_rejected_total{reason="step"}`. The agent logs the server's
+  message and keeps the counts, up to `--max-backlog`.
 - **Plain log files** work too: `--path '/var/log/app/*/*.log' --service-from-path '/var/log/app/(?P<service>[^/]+)/'`
   without `--container`.
 
@@ -331,9 +341,10 @@ inhibit_rules:
 ```
 
 **Container image.** Build a static binary, then use the distroless [Dockerfile](Dockerfile).
-A distroless image has no shell and no package manager:
+A distroless image has no shell and no package manager. `-X main.version` sets the version;
+`go build` adds the git revision by itself when it runs in a git checkout:
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o anomalyd ./cmd/anomalyd && docker build -t anomalyd .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$(git describe --tags --always)" -o anomalyd ./cmd/anomalyd && docker build -t anomalyd .
 ```
 
 **Grafana** can plot `anomalyd_score` together with `anomalyd_expected` and
@@ -350,7 +361,24 @@ The server has these HTTP endpoints:
 | `POST /api/v1/logs?service=` | raw newline-delimited JSON (NDJSON) or text lines, for small set-ups without agents |
 | `GET /api/v1/findings[?state=firing&id=]` | active and recently resolved findings |
 | `GET /api/v1/templates[?service=]` | current templates per service with line counts and dominant level |
+| `GET /api/v1/agents` | agents that pushed since start-up: last push, step, pushes, rejected pushes, lines, services with lines in the last hour |
 | `GET /metrics`, `GET /-/healthy` | scores and bands, self-metrics, liveness |
+
+Self-metrics on `/metrics` include these:
+
+- `anomalyd_build_info{version,revision,goversion}` is always 1. The agent's own `/metrics`
+  (`--listen`) has `anomalyd_agent_build_info`.
+- `anomalyd_agent_last_push_timestamp_seconds{agent}` and `anomalyd_agent_lines_total{agent}`
+  come from the agents' pushes. The timestamp is the last accepted push, heartbeats included.
+  If it is older than a few `--flush-interval`, the agent is down, cannot reach the server, or
+  pushes with a wrong step. The server keeps up to 10,000 agents. The rest share
+  `agent="_other"`. The agent's own `anomalyd_agent_lines_total` has no `agent` label. When
+  Prometheus scrapes both, select by `job`.
+- `anomalyd_log_push_rejected_total{reason="step"}` counts pushes refused for their step. They
+  are also in `anomalyd_log_push_errors_total`.
+- `anomalyd_templates_created_total{service}` and `anomalyd_templates_evicted_total{service}`
+  show template churn. Steady evictions mean that `--drain-max-templates` is too small for the
+  service, or that its lines carry variables that the masks miss.
 
 ## Verification (2026-09-15)
 
@@ -378,6 +406,7 @@ Notes:
    - a deleted file that gets closed, and a new file at the same path that is read from the
      start
    - findings → Alertmanager payload, novelty and snapshot restore
+   - agent pushes: the step check, heartbeats and the agent registry cap
    - the raw-log endpoint
 2. We also wrapped the same lines with `gen logs --container …`. Results:
    - CRI: 1.48–1.60 M lines/s
