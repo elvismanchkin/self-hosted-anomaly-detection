@@ -94,6 +94,7 @@ type stats struct {
 	alertsSent, alertErrors                    atomic.Int64
 	evalNanos, evalSeries                      atomic.Int64
 	backfilled                                 atomic.Int64
+	snapNanos, snapFailures, snapLastOK        atomic.Int64 // last save duration, failed saves, unix time of last good one
 }
 
 type tmplKey struct {
@@ -171,6 +172,7 @@ func (s *Server) Run(ctx context.Context) error {
 		defer t.Stop()
 		snap = t.C
 	}
+	saving := make(chan struct{}, 1) // held by the one background snapshot
 	for {
 		select {
 		case <-ctx.Done():
@@ -178,6 +180,7 @@ func (s *Server) Run(ctx context.Context) error {
 			defer cancel()
 			_ = srv.Shutdown(shut)
 			if s.cfg.StateDir != "" {
+				saving <- struct{}{} // wait for a running snapshot
 				if err := s.save(); err != nil {
 					slog.Error("final snapshot failed", "err", err)
 				}
@@ -188,8 +191,16 @@ func (s *Server) Run(ctx context.Context) error {
 		case now := <-tick.C:
 			s.Evaluate(now)
 		case <-snap:
-			if err := s.save(); err != nil {
-				slog.Error("snapshot failed", "err", err)
+			select {
+			case saving <- struct{}{}:
+				go func() {
+					defer func() { <-saving }()
+					if err := s.save(); err != nil {
+						slog.Error("snapshot failed", "err", err)
+					}
+				}()
+			default:
+				slog.Warn("previous snapshot still running; skipping this one", "interval", s.cfg.SnapshotEvery)
 			}
 		}
 	}

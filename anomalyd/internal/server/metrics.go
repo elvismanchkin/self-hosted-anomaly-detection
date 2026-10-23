@@ -98,6 +98,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	counter("anomalyd_log_push_errors_total", "Agent pushes rejected.", s.stats.logPushErrors.Load())
 	counter("anomalyd_alerts_sent_total", "Alerts posted to Alertmanager (per receiver).", s.stats.alertsSent.Load())
 	counter("anomalyd_alert_errors_total", "Failed Alertmanager posts.", s.stats.alertErrors.Load())
+	counter("anomalyd_snapshot_failures_total", "State snapshots that failed to save.", s.stats.snapFailures.Load())
 
 	e.Family("anomalyd_templates", "Log templates held per service.", "gauge")
 	type tc struct {
@@ -116,6 +117,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	e.Sample("anomalyd_eval_scored_buckets", nil, float64(s.stats.evalSeries.Load()))
 	e.Family("anomalyd_remote_write_newest_sample_timestamp_seconds", "Newest remote-write sample.", "gauge")
 	e.Sample("anomalyd_remote_write_newest_sample_timestamp_seconds", nil, float64(s.promClock.Load()))
+	e.Family("anomalyd_snapshot_duration_seconds", "Duration of the last state snapshot.", "gauge")
+	e.Sample("anomalyd_snapshot_duration_seconds", nil, time.Duration(s.stats.snapNanos.Load()).Seconds())
+	e.Family("anomalyd_snapshot_last_success_timestamp_seconds", "Time of the last saved state snapshot (0 = none yet).", "gauge")
+	e.Sample("anomalyd_snapshot_last_success_timestamp_seconds", nil, float64(s.stats.snapLastOK.Load()))
 	writeRuntime(e, s.started)
 	_ = e.Flush()
 }

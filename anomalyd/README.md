@@ -220,6 +220,15 @@ What this means for 200 GB–2 TB/day of logs:
   known and there is no second warm-up. Firing findings are saved too: they keep their start
   time at Alertmanager and resolve the normal way. Without that, Alertmanager would close them
   when the hold ran out, and they would fire again later with a new start time.
+  - A snapshot runs in the background. Agent pushes and evaluation do not wait for the disk.
+    If one is still running at the next interval, anomalyd skips that interval and logs a
+    warning. On SIGTERM it waits for the running snapshot, then saves once more.
+  - Ring buffers restore only with the same `--step` and ring size. After a change to `--step`,
+    `--*-season` or `--*-seasons`, anomalyd logs a warning with the old and new values. The
+    affected series start empty, and their firing findings are not restored. Templates always
+    restore.
+  - `/metrics` shows `anomalyd_snapshot_duration_seconds` (last snapshot),
+    `anomalyd_snapshot_failures_total` and `anomalyd_snapshot_last_success_timestamp_seconds`.
 
 anomalyd sends four alerts. "error/warn up" means a rise in error or warn lines. "Down" means a
 drop.
